@@ -1,6 +1,4 @@
 use crate::commands::Command;
-use crate::sim::drive::SimState;
-use crate::sim::runtime::RuntimeState;
 use std::collections::BTreeMap;
 
 pub const MAX_ITER: u64 = 10000;
@@ -18,57 +16,31 @@ impl ControlContext {
     }
 }
 
-pub fn execute_block(
-    commands: &[Command],
-    state: &mut SimState,
-    runtime: &mut RuntimeState,
-    ctx: &mut ControlContext,
-) {
-    let _ = (commands, state, runtime, ctx);
-}
-
-pub fn execute_if(
-    condition: &str,
-    children: &[Command],
-    state: &mut SimState,
-    runtime: &mut RuntimeState,
-    ctx: &mut ControlContext,
-) {
-    let _ = (condition, children, state, runtime, ctx);
-}
-
-pub fn execute_while(
-    condition: &str,
-    children: &[Command],
-    state: &mut SimState,
-    runtime: &mut RuntimeState,
-    ctx: &mut ControlContext,
-) {
-    let _ = (condition, children, state, runtime, ctx);
-}
-
-pub fn execute_for(
-    var: &str,
-    start: f64,
-    end_val: f64,
-    step: f64,
-    children: &[Command],
-    state: &mut SimState,
-    runtime: &mut RuntimeState,
-    ctx: &mut ControlContext,
-) {
-    let _ = (var, start, end_val, step, children, state, runtime, ctx);
-}
-
 pub fn define_function(ctx: &mut ControlContext, name: &str, children: Vec<Command>) {
-    ctx.functions.insert(name.to_string(), children);
+    ctx.functions.insert(func_key(name), children);
 }
 
-pub fn call_function(
-    name: &str,
-    state: &mut SimState,
-    runtime: &mut RuntimeState,
-    ctx: &mut ControlContext,
-) {
-    let _ = (name, state, runtime, ctx);
+pub fn call_function<'a>(ctx: &'a ControlContext, name: &str) -> Option<&'a Vec<Command>> {
+    ctx.functions.get(&func_key(name))
+}
+
+fn func_key(name: &str) -> String {
+    format!("__func_{name}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::CommandType;
+
+    #[test]
+    fn function_storage_uses_func_prefix() {
+        let mut ctx = ControlContext::new();
+        let body = vec![Command::new("f1", CommandType::Hover)];
+        define_function(&mut ctx, "hop", body);
+        assert!(ctx.functions.contains_key("__func_hop"));
+        assert!(call_function(&ctx, "hop").is_some());
+        assert!(call_function(&ctx, "missing").is_none());
+        assert_eq!(call_function(&ctx, "hop").unwrap().len(), 1);
+    }
 }
