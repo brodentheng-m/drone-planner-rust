@@ -1,0 +1,14 @@
+[package]
+name = "planner-app"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "drone-planner"
+path = "src/main.rs"
+
+[dependencies]
+planner-core.workspace = true
+eframe.workspace = true
+egui.workspace = true
+rfd.workspace = true
