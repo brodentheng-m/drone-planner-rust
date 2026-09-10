@@ -1237,8 +1237,8 @@ fn parse_turn_degree(args: &str) -> Option<Command> {
         return None;
     }
     let mut tail = &args[seg_end..];
-    let mut timeout;
-    let mut p_value;
+    let timeout;
+    let p_value;
     let (next, value) = opt_keyword_arg(tail, "timeout");
     tail = next;
     timeout = value;
