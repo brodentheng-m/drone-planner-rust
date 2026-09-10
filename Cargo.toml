@@ -5,6 +5,7 @@ members = ["crates/planner-core", "crates/planner-app"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [workspace.dependencies]
 planner-core = { path = "crates/planner-core", version = "0.1.0" }
