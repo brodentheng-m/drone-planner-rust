@@ -14,13 +14,58 @@ pub const DRONE_COLORS: [&str; 8] = [
 
 #[derive(Debug, Clone, Default)]
 pub struct Selection {
+    #[allow(dead_code)]
+    pub drone_index: Option<usize>,
     pub command_path: Vec<usize>,
+    #[allow(dead_code)]
+    pub obstacle_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Playback {
     pub playing: bool,
     pub frame: usize,
+    pub speed: f64,
+}
+
+impl Default for Playback {
+    fn default() -> Self {
+        Playback {
+            playing: false,
+            frame: 0,
+            speed: 1.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CameraMode {
+    MapLock,
+    Follow,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct CameraState {
+    pub mode: CameraMode,
+    pub orbit_yaw: f64,
+    pub orbit_pitch: f64,
+    pub orbit_dist: f64,
+    pub pan_offset: [f64; 2],
+    pub last_drone_pos: Option<[f64; 3]>,
+}
+
+impl Default for CameraState {
+    fn default() -> Self {
+        CameraState {
+            mode: CameraMode::MapLock,
+            orbit_yaw: 0.0,
+            orbit_pitch: 0.4019,
+            orbit_dist: 2.1731,
+            pan_offset: [0.0, 0.0],
+            last_drone_pos: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +120,13 @@ pub struct AppState {
     collision_points: Vec<[f64; 3]>,
     pub camera_reset_pending: bool,
     pub boundary_visible: bool,
+    pub generated_code: String,
+    pub dirty: bool,
+    pub camera: CameraState,
+    pub show_left: bool,
+    pub show_right: bool,
+    tick_epoch: u64,
+    last_tick_epoch: u64,
 }
 
 impl Default for AppState {
@@ -113,6 +165,13 @@ impl AppState {
             collision_points: Vec::new(),
             camera_reset_pending: false,
             boundary_visible: true,
+            generated_code: String::new(),
+            dirty: false,
+            camera: CameraState::default(),
+            show_left: true,
+            show_right: true,
+            tick_epoch: 0,
+            last_tick_epoch: u64::MAX,
         }
     }
 
@@ -231,6 +290,27 @@ impl AppState {
 
     pub fn set_speed(&mut self, s: f64) {
         self.playback_speed = s.clamp(0.1, 20.0);
+        self.playback.speed = self.playback_speed;
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    pub fn mark_saved(&mut self) {
+        self.dirty = false;
+    }
+
+    pub fn begin_frame(&mut self) {
+        self.tick_epoch += 1;
+    }
+
+    pub fn sync_camera_mode(&mut self) {
+        self.camera.mode = if self.camera_mode == 2 {
+            CameraMode::Follow
+        } else {
+            CameraMode::MapLock
+        };
     }
 
     pub fn set_scrub(&mut self, f: f64) {
@@ -252,6 +332,7 @@ impl AppState {
     }
 
     pub fn refresh_sim(&mut self) {
+        self.log(format!("Simulating {} drone(s)...", self.plan.drones.len()));
         let mut route_map: BTreeMap<String, Vec<(usize, usize)>> = BTreeMap::new();
         for drone in &self.plan.drones {
             route_map.insert(drone.id.clone(), Vec::new());
@@ -276,12 +357,22 @@ impl AppState {
             .active_drone_index()
             .and_then(|i| self.sim_results.get(&self.plan.drones[i].id).cloned());
         self.playback_ended = false;
-        let code = if self.plan.drones.len() > 1 {
+        let point_total: usize = self.sim_results.values().map(|r| r.positions.len()).sum();
+        self.log(format!(
+            "Simulation complete: {} points, {:.1} s",
+            point_total,
+            self.max_duration()
+        ));
+        self.generated_code = if self.plan.drones.len() > 1 {
             planner_core::codegen::generate_swarm_code(&self.plan)
         } else {
             planner_core::codegen::generate_code(&self.plan)
         };
-        self.log(format!("Generated {} chars Python", code.chars().count()));
+        self.log(format!(
+            "Generated {} chars Python",
+            self.generated_code.chars().count()
+        ));
+        self.selection.drone_index = self.active_drone_index();
         self.collision_marks.clear();
         self.collision_points.clear();
         let mut hits = Vec::new();
@@ -336,7 +427,10 @@ impl AppState {
         if !self.playback.playing {
             return false;
         }
-        self.playback_time += dt_seconds * self.playback_speed;
+        if self.last_tick_epoch != self.tick_epoch {
+            self.last_tick_epoch = self.tick_epoch;
+            self.playback_time += dt_seconds * self.playback.speed;
+        }
         let max_duration = self.max_duration();
         let t = (self.playback_time / max_duration).min(1.0);
         self.playback_scrub = t;
@@ -344,7 +438,18 @@ impl AppState {
         if t >= 1.0 && !self.playback_ended {
             self.playback_ended = true;
             self.playback.playing = false;
+            self.flying = false;
             self.status_text = self.end_status().to_string();
+        }
+        if let Some(frame) = self.current_frame() {
+            let active_id = self.active_drone_index().map(|i| self.plan.drones[i].id.clone());
+            let point = active_id
+                .as_ref()
+                .and_then(|id| frame.positions.get(id))
+                .or_else(|| frame.positions.values().next());
+            if let Some(p) = point {
+                self.camera.last_drone_pos = Some([p.x, p.y, p.z]);
+            }
         }
         let speed = self.active_frame_speed().unwrap_or(0.0);
         self.push_telemetry_sample(speed);
@@ -485,6 +590,7 @@ impl AppState {
         self.log(format!("Added {}", drone.name));
         self.plan.drones.push(drone);
         self.selection = Selection::default();
+        self.mark_dirty();
         self.refresh_sim();
     }
 
@@ -502,6 +608,7 @@ impl AppState {
             self.plan.active_drone_id = self.plan.drones.first().map(|d| d.id.clone());
         }
         self.selection = Selection::default();
+        self.mark_dirty();
         self.refresh_sim();
     }
 
@@ -523,6 +630,7 @@ impl AppState {
         self.log(format!("Duplicated {} as {}", src.name, drone.name));
         self.plan.drones.push(drone);
         self.selection = Selection::default();
+        self.mark_dirty();
         self.refresh_sim();
     }
 
@@ -563,6 +671,7 @@ impl AppState {
             self.plan.drones[i].offset = offset;
         }
         self.log(format!("Formation: {kind} ({count} drones)"));
+        self.mark_dirty();
         self.refresh_sim();
     }
 
@@ -589,6 +698,7 @@ impl AppState {
                 if target.command_type.is_block() {
                     target.children.push(command);
                     self.log(format!("Added: {label}"));
+                    self.mark_dirty();
                     self.refresh_sim();
                     return;
                 }
@@ -597,6 +707,7 @@ impl AppState {
         }
         drone.commands.push(command);
         self.log(format!("Added: {label}"));
+        self.mark_dirty();
         self.refresh_sim();
     }
 
@@ -632,6 +743,7 @@ impl AppState {
             list.swap(last, last + 1);
             self.selection.command_path = [parent_path, &[last + 1]].concat();
         }
+        self.mark_dirty();
         self.refresh_sim();
     }
 
@@ -658,6 +770,7 @@ impl AppState {
             list.remove(last);
         }
         self.selection.command_path.clear();
+        self.mark_dirty();
         self.refresh_sim();
     }
 
@@ -671,6 +784,7 @@ impl AppState {
         };
         if let Some(command) = command_at_path_mut(&mut self.plan.drones[index].commands, &path) {
             command.params.insert(key.to_string(), value);
+            self.mark_dirty();
         }
     }
 
@@ -683,6 +797,7 @@ impl AppState {
         };
         let count = commands.len();
         self.plan.drones[index].commands = commands;
+        self.mark_dirty();
         self.refresh_sim();
         self.log_level("success", "Code applied successfully!");
         Ok(count)
@@ -703,6 +818,7 @@ impl AppState {
                 }
                 self.selection = Selection::default();
                 self.log(format!("Loaded flight plan: {}", self.plan.name));
+                self.dirty = false;
                 self.refresh_sim();
                 Ok(())
             }
@@ -748,6 +864,8 @@ impl AppState {
                         format!("Rejected {rejected} obstacles outside boundary"),
                     );
                 }
+                self.selection.obstacle_id = None;
+                self.mark_dirty();
                 self.refresh_sim();
                 Ok(kept)
             }

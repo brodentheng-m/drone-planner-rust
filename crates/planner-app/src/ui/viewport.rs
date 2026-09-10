@@ -139,6 +139,7 @@ struct GlSaved {
     scissor: bool,
     cull: bool,
     depth_mask: bool,
+    depth_func: i32,
     viewport: [i32; 4],
     scissor_box: [i32; 4],
     clear_color: [f32; 4],
@@ -176,6 +177,7 @@ fn gl_save(gl: &glow::Context) -> GlSaved {
             scissor: gl.is_enabled(glow::SCISSOR_TEST),
             cull: gl.is_enabled(glow::CULL_FACE),
             depth_mask: gl.get_parameter_i32(glow::DEPTH_WRITEMASK) != 0,
+            depth_func: gl.get_parameter_i32(glow::DEPTH_FUNC),
             viewport,
             scissor_box,
             clear_color,
@@ -203,6 +205,7 @@ fn gl_restore(gl: &glow::Context, saved: GlSaved) {
         set_enabled(gl, glow::SCISSOR_TEST, saved.scissor);
         set_enabled(gl, glow::CULL_FACE, saved.cull);
         gl.depth_mask(saved.depth_mask);
+        gl.depth_func(saved.depth_func as u32);
         gl.viewport(
             saved.viewport[0],
             saved.viewport[1],
@@ -237,12 +240,16 @@ fn paint_gl(gl: &glow::Context, st: &mut GlState, info: &egui::PaintCallbackInfo
         let vp = info.viewport_in_pixels();
         gl.viewport(vp.left_px, vp.from_bottom_px, vp.width_px, vp.height_px);
         let clip = info.clip_rect_in_pixels();
+        let scissor_left = vp.left_px.max(clip.left_px);
+        let scissor_right = (vp.left_px + vp.width_px).min(clip.left_px + clip.width_px);
+        let scissor_bottom = vp.from_bottom_px.max(clip.from_bottom_px);
+        let scissor_top = (vp.from_bottom_px + vp.height_px).min(clip.from_bottom_px + clip.height_px);
         gl.enable(glow::SCISSOR_TEST);
         gl.scissor(
-            clip.left_px,
-            clip.from_bottom_px,
-            clip.width_px,
-            clip.height_px,
+            scissor_left,
+            scissor_bottom,
+            (scissor_right - scissor_left).max(0),
+            (scissor_top - scissor_bottom).max(0),
         );
         gl.clear_color(BG[0], BG[1], BG[2], BG[3]);
         gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
@@ -341,13 +348,19 @@ impl ViewportPanel {
             if span > 30 {
                 spots.push(pos_idx + span / 2);
             }
+            let selected = state.selection.command_path.first().copied() == Some(*command);
             for idx in spots {
                 let Some(p) = result.positions.get(idx) else {
                     continue;
                 };
                 let gl = [p.x as f32, p.z as f32 + 0.05, p.y as f32];
-                emit_octa(g, gl, 0.045, dot);
-                emit_ring(g, gl, 0.06, 0.07, ring);
+                if selected {
+                    emit_octa(g, gl, 0.06, [1.0, 1.0, 1.0, 1.0]);
+                    emit_ring(g, gl, 0.075, 0.09, [1.0, 1.0, 1.0, 0.7]);
+                } else {
+                    emit_octa(g, gl, 0.045, dot);
+                    emit_ring(g, gl, 0.06, 0.07, ring);
+                }
                 if let Some(screen) = project(gl, view, proj, rect) {
                     self.waypoint_hits.push((screen, *command));
                 }
@@ -411,9 +424,9 @@ impl ViewportPanel {
         if self.mode != self.prev_mode {
             self.prev_mode = self.mode;
             self.follow_offset = None;
-        }
-        if self.mode == 1 {
-            self.target = [0.0, 0.15, 0.0];
+            if self.mode == 1 {
+                self.target = [0.0, 0.15, 0.0];
+            }
         }
     }
 
@@ -512,13 +525,19 @@ impl ViewportPanel {
     }
 
     fn build_trails(&self, g: &mut SceneGeom) {
-        let color = rgba(0x22c55e, 1.0);
+        let base = rgb(0x22c55e);
         for trail in self.trails.values() {
-            for pair in trail.windows(2) {
+            let n = trail.len();
+            if let Some(first) = trail.first() {
+                emit_octa(g, *first, 0.06, rgba(0x3fb950, 0.9));
+            }
+            for (i, pair) in trail.windows(2).enumerate() {
+                let t = (i + 1) as f32 / n.max(1) as f32;
+                let color = [base[0], base[1], base[2], 0.15 + 0.65 * t];
                 push_line(g, pair[0], pair[1], color);
             }
             if let Some(head) = trail.last() {
-                emit_octa(g, *head, 0.03, color);
+                emit_octa(g, *head, 0.04, [base[0], base[1], base[2], 0.4]);
             }
         }
     }
@@ -541,6 +560,18 @@ impl ViewportPanel {
 
     pub fn show(&mut self, ui: &mut Ui, state: &mut AppState) {
         let rect = ui.available_rect_before_wrap();
+        if rect.width() < 320.0 {
+            ui.painter()
+                .rect_filled(rect, 0.0, Color32::from_rgb(0x0d, 0x11, 0x17));
+            ui.painter().text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                "Close some panels (toolbar) to show the map",
+                FontId::proportional(13.0),
+                Color32::from_rgb(0x8b, 0x94, 0x9e),
+            );
+            return;
+        }
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
         self.handle_input(ui, &response);
         let dt = ui.input(|input| input.stable_dt) as f64;
@@ -570,7 +601,7 @@ impl ViewportPanel {
         self.build_trails(&mut geom);
         build_drones(self, &mut geom, state, &frame);
         build_collision_markers(&mut geom, state);
-        if response.clicked() {
+        if response.clicked() && !state.playback.playing {
             self.pick_waypoint(&response, state);
         }
         let line_verts = (geom.lines.len() / 7) as i32;
@@ -832,29 +863,25 @@ fn build_boundary(g: &mut SceneGeom, state: &AppState) {
 }
 
 fn build_route(g: &mut SceneGeom, state: &AppState) {
-    let Some(id) = active_drone_id(state) else {
-        return;
-    };
-    let Some(result) = state.sim_results.get(&id) else {
-        return;
-    };
-    let color = rgba(0xf87171, 1.0);
-    for pair in result.positions.windows(2) {
-        let a = &pair[0];
-        let b = &pair[1];
-        push_line(
-            g,
-            [a.x as f32, a.z as f32, a.y as f32],
-            [b.x as f32, b.z as f32, b.y as f32],
-            color,
-        );
+    let color = rgba(0xf87171, 0.85);
+    for result in state.sim_results.values() {
+        for pair in result.positions.windows(2) {
+            let a = &pair[0];
+            let b = &pair[1];
+            push_line(
+                g,
+                [a.x as f32, a.z as f32, a.y as f32],
+                [b.x as f32, b.z as f32, b.y as f32],
+                color,
+            );
+        }
     }
 }
 
 fn build_collision_markers(g: &mut SceneGeom, state: &AppState) {
     let color = rgba(0xe53e3e, 0.9);
     for pt in state.collision_points() {
-        let gl = [pt[0] as f32, pt[2] as f32, -pt[1] as f32];
+        let gl = [pt[0] as f32, pt[2] as f32, pt[1] as f32];
         emit_octa(g, gl, 0.12, color);
     }
 }

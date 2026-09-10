@@ -2,9 +2,7 @@ use crate::state::AppState;
 use egui::{Color32, CornerRadius, Stroke, Ui, Visuals};
 use std::time::Duration;
 
-pub mod code_panel;
 pub mod obstacles_panel;
-pub mod palette;
 pub mod plan_tree;
 pub mod telemetry;
 pub mod viewport;
@@ -37,10 +35,7 @@ fn apply_theme(ctx: &egui::Context) {
 
 pub struct UiRoot {
     pub plan_tree: plan_tree::PlanTreePanel,
-    pub palette: palette::PalettePanel,
     pub viewport: viewport::ViewportPanel,
-    pub telemetry: telemetry::TelemetryPanel,
-    pub code_panel: code_panel::CodePanel,
     pub obstacles_panel: obstacles_panel::ObstaclesPanel,
     theme_applied: bool,
 }
@@ -49,10 +44,7 @@ impl UiRoot {
     pub fn new() -> UiRoot {
         UiRoot {
             plan_tree: plan_tree::PlanTreePanel::new(),
-            palette: palette::PalettePanel::new(),
             viewport: viewport::ViewportPanel::new(),
-            telemetry: telemetry::TelemetryPanel::new(),
-            code_panel: code_panel::CodePanel::new(),
             obstacles_panel: obstacles_panel::ObstaclesPanel::new(),
             theme_applied: false,
         }
@@ -66,14 +58,8 @@ impl UiRoot {
         if state.playback.playing {
             ui.ctx().request_repaint_after(Duration::from_millis(33));
         }
-        let frame = egui::Frame::central_panel(ui.style()).fill(BG);
-        egui::CentralPanel::default().frame(frame).show(ui, |ui| {
-            self.obstacles_panel.show(ui, state);
-            self.telemetry.show(ui, state);
-            self.code_panel.show(ui, state);
-            self.palette.show(ui, state);
-            self.plan_tree.show(ui, state);
-            self.viewport.show(ui, state);
-        });
+        self.obstacles_panel.show(ui, state);
+        self.plan_tree.show(ui, state);
+        self.viewport.show(ui, state);
     }
 }
