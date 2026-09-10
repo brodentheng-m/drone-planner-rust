@@ -9,10 +9,10 @@ Renderer: eframe + egui + GLOW (OpenGL 3.3-class). No wgpu, no Vulkan, no WebVie
 
 ## Status
 
-- Scaffold complete: workspace, crate skeletons, fixture loader, DP_SMOKE gate
-- Engine core (aero, simulator, commands, obstacles, codegen, plan I/O): next
-- Scene + UI (viewport, plan tree, palette, telemetry, obstacles panel): queued
-- Portable Windows exe packaging: queued
+- Engine core (aero, simulator, commands, obstacles, codegen, plan I/O): implemented and tested
+- Scene + UI (viewport, plan tree, palette, telemetry, obstacles panel): implemented and tested
+- Portable Windows exe build: see BUILD_LOG.md
+- DP_SMOKE=1 cargo run -p planner-app: prints "planner-app smoke ok", no window
 
 ## Layout
 
@@ -28,7 +28,7 @@ crates/planner-core     engine library: no GUI deps, fixture-tested
 crates/planner-app      desktop binary (eframe glow, rfd file dialogs)
   DP_SMOKE=1            headless smoke gate (no window, prints and exits 0)
 tests/golden/golden.json  frozen outputs captured from the reference web app (11
-                          plans, 3-drone swarm, obstacle set, collision plan)
+                           plans, 3-drone swarm, obstacle set, collision plan)
 tests/parity.rs         fixture load + command-type identity tests
 ```
 
@@ -43,17 +43,23 @@ DP_SMOKE=1 cargo run -p planner-app   # headless smoke, no window
 cargo run -p planner-app              # window
 ```
 
-Windows target (compile gate; final exe ships with the packaging stage):
+## Windows build
 
 ```
 rustup target add x86_64-pc-windows-msvc
-cargo check --target x86_64-pc-windows-msvc
+cargo install cargo-xwin
+RUSTFLAGS="-C target-feature=+crt-static" cargo xwin build --release --target x86_64-pc-windows-msvc
 ```
 
-The shipped exe is built with a static CRT (`-C target-feature=+crt-static`), needs
-no VC redistributable, writes only under `%APPDATA%\drone-planner`, touches no
-registry, and starts with zero network. If the machine lacks a GPU driver, drop a
-mesa llvmpipe `opengl32.dll` next to the exe (software rendering, no admin needed).
+The exact command and import-table verification are recorded in BUILD_LOG.md.
+
+## Run on Windows (no admin)
+
+- Copy `drone-planner.exe` (from `target/x86_64-pc-windows-msvc/release/`) anywhere writable: Downloads, Desktop, or a USB stick.
+- Double-click it. A window titled "Drone Planner" opens.
+- If nothing opens or you get a GL error: drop a mesa llvmpipe `opengl32.dll` next to the exe (software rendering), then start again.
+- No admin, no installer, no registry, no network use.
+- The app starts writing nothing to disk. Plans, obstacle files, and Python exports go wherever you save them in the file dialogs (default extension `.flight` for plans; JSON/GeoJSON/CSV/OBJ for obstacles).
 
 ## Fixture parity
 
