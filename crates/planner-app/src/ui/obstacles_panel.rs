@@ -27,7 +27,6 @@ impl Default for CodeSection {
 }
 
 pub struct ObstaclesPanel {
-    pub obstacles_visible: bool,
     expanded: Option<usize>,
     last_rejected: Option<usize>,
     edit_pending: bool,
@@ -44,7 +43,6 @@ impl Default for ObstaclesPanel {
 impl ObstaclesPanel {
     pub fn new() -> ObstaclesPanel {
         ObstaclesPanel {
-            obstacles_visible: true,
             expanded: None,
             last_rejected: None,
             edit_pending: false,
@@ -81,8 +79,8 @@ impl ObstaclesPanel {
         ui.heading("Obstacles");
         ui.horizontal_wrapped(|ui| {
             if ui.button("Toggle Obstacles").clicked() {
-                self.obstacles_visible = !self.obstacles_visible;
-                let text = if self.obstacles_visible {
+                state.toggle_obstacle_visibility();
+                let text = if state.obstacles_visible {
                     "Obstacles shown"
                 } else {
                     "Obstacles hidden"
@@ -90,13 +88,13 @@ impl ObstaclesPanel {
                 state.log(text);
             }
             if ui.button("Clear All").clicked() {
-                state.obstacles.obstacles.clear();
+                state.obstacle_store_mut().clear();
                 self.expanded = None;
                 state.log("All obstacles cleared");
                 state.refresh_sim();
             }
             if ui.button("Reload Base").clicked() {
-                state.obstacles.obstacles = obstacles::BASE_OBSTACLES.clone();
+                *state.obstacle_store_mut() = obstacles::BASE_OBSTACLES.clone();
                 self.expanded = None;
                 state.log("Base obstacles reloaded");
                 state.refresh_sim();
@@ -141,9 +139,9 @@ impl ObstaclesPanel {
         let mut remove: Option<usize> = None;
         let mut toggle: Option<usize> = None;
         let mut edited = false;
-        for index in 0..state.obstacles.obstacles.len() {
+        for index in 0..state.obstacle_store().len() {
             let (obstacle_type, name, pos) = {
-                let obstacle = &state.obstacles.obstacles[index];
+                let obstacle = &state.obstacle_store()[index];
                 (
                     obstacle.obstacle_type.clone(),
                     obstacle.name.clone(),
@@ -168,7 +166,7 @@ impl ObstaclesPanel {
                 }
             });
             if self.expanded == Some(index) {
-                let obstacle = &mut state.obstacles.obstacles[index];
+                let obstacle = &mut state.obstacle_store_mut()[index];
                 ui.horizontal(|ui| {
                     ui.label("pos");
                     for axis in 0..3 {
@@ -204,7 +202,7 @@ impl ObstaclesPanel {
             };
         }
         if let Some(index) = remove {
-            let removed = state.obstacles.obstacles.remove(index);
+            let removed = state.obstacle_store_mut().remove(index);
             state.log(format!("Obstacle removed: {}", removed.name));
             self.expanded = match self.expanded {
                 Some(current) if current == index => None,
@@ -363,29 +361,28 @@ fn console_color(line: &str) -> Color32 {
 }
 
 fn add_obstacle(state: &mut AppState, type_name: &str) {
-    let mut number = state.obstacles.obstacles.len() + 1;
-    let id = loop {
-        let candidate = format!("obs_{type_name}_{number}");
-        if !state
-            .obstacles
-            .obstacles
-            .iter()
-            .any(|obstacle| obstacle.id == candidate)
-        {
-            break candidate;
-        }
-        number += 1;
+    let name = {
+        let store = state.obstacle_store_mut();
+        let mut number = store.len() + 1;
+        let id = loop {
+            let candidate = format!("obs_{type_name}_{number}");
+            if !store.iter().any(|obstacle| obstacle.id == candidate) {
+                break candidate;
+            }
+            number += 1;
+        };
+        let name = format!("{type_name} {number}");
+        store.push(Obstacle {
+            id,
+            obstacle_type: type_name.to_string(),
+            position: [0.0, 0.5, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: [1.0, 1.0, 1.0],
+            name: name.clone(),
+            color: None,
+        });
+        name
     };
-    let name = format!("{type_name} {number}");
-    state.obstacles.obstacles.push(Obstacle {
-        id,
-        obstacle_type: type_name.to_string(),
-        position: [0.0, 0.5, 0.0],
-        rotation: [0.0, 0.0, 0.0],
-        scale: [1.0, 1.0, 1.0],
-        name: name.clone(),
-        color: None,
-    });
     state.log(format!("Added obstacle: {name}"));
 }
 
@@ -400,33 +397,12 @@ fn import_dialog(panel: &mut ObstaclesPanel, state: &mut AppState) {
         .unwrap_or_default();
     match std::fs::read_to_string(&path) {
         Ok(text) => {
-            let parsed_count = parse_count(&text, &filename);
-            let before = state.obstacles.obstacles.len();
-            if let Ok(total) = state.import_obstacle_text(&text, &filename) {
-                if let Some(count) = parsed_count {
-                    let added = total.saturating_sub(before);
-                    panel.last_rejected = Some(count.saturating_sub(added));
-                }
+            if let Ok(rejected) = state.import_obstacle_text(&text, &filename) {
+                panel.last_rejected = Some(rejected);
             }
         }
         Err(err) => state.log_level("error", format!("Error importing obstacles: {err}")),
     }
-}
-
-fn parse_count(text: &str, filename: &str) -> Option<usize> {
-    let lower = filename.to_ascii_lowercase();
-    let parsed = if lower.ends_with(".json") {
-        obstacles::import_json(text)
-    } else if lower.ends_with(".geojson") {
-        obstacles::import_geojson(text)
-    } else if lower.ends_with(".csv") {
-        obstacles::import_csv(text)
-    } else if lower.ends_with(".obj") {
-        obstacles::import_obj(text)
-    } else {
-        return None;
-    };
-    parsed.ok().map(|items| items.len())
 }
 
 fn export_dialog(state: &mut AppState) {
@@ -436,7 +412,7 @@ fn export_dialog(state: &mut AppState) {
         .save_file();
     let Some(path) = path else { return };
     let file = ObstacleFile {
-        obstacles: state.obstacles.obstacles.clone(),
+        obstacles: state.obstacle_store().clone(),
         boundary: Some(state.obstacles.boundary),
     };
     let text_path = path.to_string_lossy().into_owned();

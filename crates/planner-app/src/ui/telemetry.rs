@@ -8,7 +8,7 @@ pub struct TelemetryPanel {
 impl Default for TelemetryPanel {
     fn default() -> Self {
         TelemetryPanel {
-            chart_expanded: true,
+            chart_expanded: false,
         }
     }
 }
@@ -42,13 +42,9 @@ impl Default for Metrics {
 }
 
 fn metrics_from(state: &AppState) -> Metrics {
-    let active_id = state
-        .plan
-        .active_drone_id
-        .clone()
-        .or_else(|| state.plan.drones.first().map(|d| d.id.clone()));
+    let first_id = state.plan.drones.first().map(|drone| drone.id.clone());
     if let Some(frame) = state.current_frame() {
-        let key = active_id
+        let key = first_id
             .as_ref()
             .filter(|id| frame.positions.contains_key(*id))
             .or_else(|| frame.positions.keys().next());
@@ -66,7 +62,7 @@ fn metrics_from(state: &AppState) -> Metrics {
             };
         }
     }
-    if let Some(res) = active_id
+    if let Some(res) = first_id
         .as_ref()
         .and_then(|id| state.sim_results.get(id))
         .or_else(|| state.sim_results.values().next())
@@ -91,7 +87,7 @@ fn metrics_from(state: &AppState) -> Metrics {
 impl TelemetryPanel {
     pub fn new() -> TelemetryPanel {
         TelemetryPanel {
-            chart_expanded: true,
+            chart_expanded: false,
         }
     }
 

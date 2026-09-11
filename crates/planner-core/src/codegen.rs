@@ -384,7 +384,10 @@ fn sim_command(command: &Command, pad: &str, lines: &mut Vec<String>) {
             lines.push(format!("{pad}x -= math.cos(rad) * dist_m"));
             lines.push(format!("{pad}y -= math.sin(rad) * dist_m"));
         }
-        CommandType::DetectWall => lines.push(format!("{pad}{} = 0", interp_param(p, "var"))),
+        CommandType::DetectWall => {
+            lines.push(format!("{pad}# Detect Wall"));
+            lines.push(format!("{pad}{} = 0", interp_param(p, "var")));
+        }
         CommandType::Led => lines.push(format!("{pad}# LED color={}", interp_param(p, "color"))),
         CommandType::LedOff => lines.push(format!("{pad}# LED Off")),
         CommandType::RandomLed => lines.push(format!("{pad}# Random LED")),

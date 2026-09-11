@@ -180,51 +180,30 @@ fn rotation_matrix_xyz(rx: f64, ry: f64, rz: f64) -> [[f64; 3]; 3] {
     ]
 }
 
-fn geometry_vertices(obstacle_type: &str) -> Option<Vec<[f64; 3]>> {
+fn local_bounds(obstacle_type: &str) -> Option<([f64; 3], [f64; 3])> {
     let dims = type_dims(obstacle_type)?;
-    let mut vertices = Vec::new();
     match obstacle_type {
         "wall" | "tower" | "square" => {
             let half = [dims.width / 2.0, dims.height / 2.0, dims.depth / 2.0];
-            for x in [-half[0], half[0]] {
-                for y in [-half[1], half[1]] {
-                    for z in [-half[2], half[2]] {
-                        vertices.push([x, y, z]);
-                    }
-                }
-            }
+            Some(([-half[0], -half[1], -half[2]], half))
         }
         "hoop" => {
-            for i in 0..=24 {
-                let u = i as f64 / 24.0 * std::f64::consts::TAU;
-                for j in 0..=8 {
-                    let v = j as f64 / 8.0 * std::f64::consts::TAU;
-                    vertices.push([
-                        (dims.outer_radius + dims.inner_radius * v.cos()) * u.cos(),
-                        (dims.outer_radius + dims.inner_radius * v.cos()) * u.sin(),
-                        dims.inner_radius * v.sin(),
-                    ]);
-                }
-            }
+            let ring = dims.outer_radius + dims.inner_radius;
+            Some((
+                [-ring, -ring, -dims.inner_radius],
+                [ring, ring, dims.inner_radius],
+            ))
         }
-        "cone" => {
-            for i in 0..32 {
-                let angle = i as f64 / 32.0 * std::f64::consts::TAU;
-                vertices.push([
-                    dims.radius * angle.cos(),
-                    -dims.height / 2.0,
-                    dims.radius * angle.sin(),
-                ]);
-            }
-            vertices.push([0.0, dims.height / 2.0, 0.0]);
-        }
+        "cone" => Some((
+            [-dims.radius, -dims.height / 2.0, -dims.radius],
+            [dims.radius, dims.height / 2.0, dims.radius],
+        )),
         "sphere" => {
-            vertices.push([-dims.radius, -dims.radius, -dims.radius]);
-            vertices.push([dims.radius, dims.radius, dims.radius]);
+            let radius = dims.radius;
+            Some(([-radius, -radius, -radius], [radius, radius, radius]))
         }
-        _ => {}
+        _ => None,
     }
-    Some(vertices)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -268,8 +247,8 @@ impl ObstacleSet {
     }
 
     pub fn world_box(&self, obstacle: &Obstacle) -> Aabb {
-        let vertices = match geometry_vertices(&obstacle.obstacle_type) {
-            Some(vertices) => vertices,
+        let (local_min, local_max) = match local_bounds(&obstacle.obstacle_type) {
+            Some(bounds) => bounds,
             None => return Aabb { min: obstacle.position, max: obstacle.position },
         };
         let matrix = rotation_matrix_xyz(
@@ -277,13 +256,23 @@ impl ObstacleSet {
             obstacle.rotation[1],
             obstacle.rotation[2],
         );
+        let corners = [
+            [local_min[0], local_min[1], local_min[2]],
+            [local_min[0], local_min[1], local_max[2]],
+            [local_min[0], local_max[1], local_min[2]],
+            [local_min[0], local_max[1], local_max[2]],
+            [local_max[0], local_min[1], local_min[2]],
+            [local_max[0], local_min[1], local_max[2]],
+            [local_max[0], local_max[1], local_min[2]],
+            [local_max[0], local_max[1], local_max[2]],
+        ];
         let mut min = [f64::INFINITY; 3];
         let mut max = [f64::NEG_INFINITY; 3];
-        for vertex in vertices {
+        for corner in corners {
             let scaled = [
-                vertex[0] * obstacle.scale[0],
-                vertex[1] * obstacle.scale[1],
-                vertex[2] * obstacle.scale[2],
+                corner[0] * obstacle.scale[0],
+                corner[1] * obstacle.scale[1],
+                corner[2] * obstacle.scale[2],
             ];
             let world = [
                 matrix[0][0] * scaled[0] + matrix[0][1] * scaled[1] + matrix[0][2] * scaled[2]
@@ -351,8 +340,11 @@ impl ObstacleSet {
     pub fn import(&mut self, obstacles: Vec<Obstacle>) -> usize {
         let mut rejected = 0;
         let mut accepted = Vec::new();
-        for obstacle in obstacles {
+        for mut obstacle in obstacles {
             if self.within_boundary(obstacle.position) {
+                if obstacle.name.is_empty() {
+                    obstacle.name = format!("{} {}", obstacle.obstacle_type, accepted.len() + 1);
+                }
                 accepted.push(obstacle);
             } else {
                 rejected += 1;
@@ -382,6 +374,28 @@ struct ImportedDef {
     color: Option<String>,
 }
 
+fn js_number(text: &str) -> Option<f64> {
+    if let Some(digits) = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
+        if digits.is_empty() {
+            return None;
+        }
+        return i128::from_str_radix(digits, 16).ok().map(|value| value as f64);
+    }
+    if let Some(digits) = text.strip_prefix("0b").or_else(|| text.strip_prefix("0B")) {
+        if digits.is_empty() {
+            return None;
+        }
+        return i128::from_str_radix(digits, 2).ok().map(|value| value as f64);
+    }
+    if let Some(digits) = text.strip_prefix("0o").or_else(|| text.strip_prefix("0O")) {
+        if digits.is_empty() {
+            return None;
+        }
+        return i128::from_str_radix(digits, 8).ok().map(|value| value as f64);
+    }
+    text.parse::<f64>().ok()
+}
+
 fn maybe_num_str(text: &str) -> Option<f64> {
     if text.is_empty() {
         return None;
@@ -390,12 +404,43 @@ fn maybe_num_str(text: &str) -> Option<f64> {
     let value = if trimmed.is_empty() {
         0.0
     } else {
-        trimmed.parse::<f64>().ok()?
+        js_number(trimmed)?
     };
     if value.is_finite() {
         Some(value)
     } else {
         None
+    }
+}
+
+fn js_number_text(number: &serde_json::Number) -> String {
+    if let Some(value) = number.as_i64() {
+        value.to_string()
+    } else if let Some(value) = number.as_u64() {
+        value.to_string()
+    } else if let Some(value) = number.as_f64() {
+        let text = value.to_string();
+        match text.strip_suffix(".0") {
+            Some(stripped) => stripped.to_string(),
+            None => text,
+        }
+    } else {
+        number.to_string()
+    }
+}
+
+fn js_stringify(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::Bool(flag) => flag.to_string(),
+        serde_json::Value::Number(number) => js_number_text(number),
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Array(items) => items
+            .iter()
+            .map(js_stringify)
+            .collect::<Vec<String>>()
+            .join(","),
+        serde_json::Value::Object(_) => "[object Object]".to_string(),
     }
 }
 
@@ -412,6 +457,24 @@ fn json_num(value: Option<&serde_json::Value>) -> Option<f64> {
             }
         }
         Some(serde_json::Value::Bool(flag)) => Some(if *flag { 1.0 } else { 0.0 }),
+        Some(serde_json::Value::Array(items)) => {
+            let text = items
+                .iter()
+                .map(js_stringify)
+                .collect::<Vec<String>>()
+                .join(",");
+            let trimmed = text.trim();
+            let value = if trimmed.is_empty() {
+                0.0
+            } else {
+                js_number(trimmed)?
+            };
+            if value.is_finite() {
+                Some(value)
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }
@@ -473,6 +536,14 @@ fn value_to_string(value: &serde_json::Value) -> String {
 fn json_color(value: Option<&serde_json::Value>) -> Option<String> {
     match value {
         Some(serde_json::Value::Null) | None => None,
+        Some(serde_json::Value::Number(number)) => {
+            let raw = number.as_f64()?;
+            if !raw.is_finite() {
+                return None;
+            }
+            let packed = (raw as i64 as u64) & 0x00ff_ffff;
+            Some(format!("#{packed:06x}"))
+        }
         Some(value) => Some(value_to_string(value)),
     }
 }
@@ -485,7 +556,14 @@ fn coerce_name(obj: &serde_json::Map<String, serde_json::Value>) -> Option<Strin
     }
     match obj.get("label") {
         Some(serde_json::Value::Null) | None => None,
-        Some(value) => Some(value_to_string(value)),
+        Some(value) => {
+            let text = value_to_string(value);
+            if text.is_empty() {
+                None
+            } else {
+                Some(text)
+            }
+        }
     }
 }
 
@@ -674,20 +752,14 @@ fn coerce_json_def(item: &serde_json::Value) -> Option<ImportedDef> {
 fn finish(defs: Vec<ImportedDef>) -> Vec<Obstacle> {
     defs.into_iter()
         .enumerate()
-        .map(|(index, def)| {
-            let name = def
-                .name
-                .clone()
-                .unwrap_or_else(|| format!("{} {}", def.obstacle_type, index + 1));
-            Obstacle {
-                id: format!("obs_{index}"),
-                obstacle_type: def.obstacle_type,
-                position: def.position,
-                rotation: def.rotation,
-                scale: def.scale.unwrap_or([1.0, 1.0, 1.0]),
-                name,
-                color: def.color,
-            }
+        .map(|(index, def)| Obstacle {
+            id: format!("obs_{index}"),
+            obstacle_type: def.obstacle_type,
+            position: def.position,
+            rotation: def.rotation,
+            scale: def.scale.unwrap_or([1.0, 1.0, 1.0]),
+            name: def.name.unwrap_or_default(),
+            color: def.color,
         })
         .collect()
 }
@@ -866,8 +938,19 @@ fn feature_to_def(
         .map(value_to_string)
         .map(|text| text.trim().to_string())
         .filter(|text| !text.is_empty())
-        .or_else(|| prop("title").filter(|value| !value.is_null()).map(value_to_string))
-        .or_else(|| feature.get("id").filter(|value| !value.is_null()).map(value_to_string))
+        .or_else(|| {
+            prop("title")
+                .filter(|value| !value.is_null())
+                .map(value_to_string)
+                .filter(|text| !text.is_empty())
+        })
+        .or_else(|| {
+            feature
+                .get("id")
+                .filter(|value| !value.is_null())
+                .map(value_to_string)
+                .filter(|text| !text.is_empty())
+        })
         .unwrap_or_else(|| format!("Geo Obstacle {}", index + 1));
     let height = json_num(prop("height"));
     let width = json_num(prop("width"));
@@ -1238,6 +1321,51 @@ mod tests {
     }
 
     #[test]
+    fn world_box_rotated_primitives_match_set_from_object() {
+        let set = ObstacleSet::new();
+        let cases = [
+            (
+                "sphere",
+                [1.0, 0.5, -0.4],
+                [0.3, 0.7, 0.1],
+                [0.629601085, 0.139403342, -0.817258660],
+                [1.370398915, 0.860596658, 0.017258660],
+            ),
+            (
+                "cone",
+                [-2.0, 0.2, 2.0],
+                [0.6, 0.3, 0.0],
+                [-2.250171343, -0.106324491, 1.680596185],
+                [-1.749828657, 0.506324491, 2.319403815],
+            ),
+            (
+                "hoop",
+                [0.0, 1.5, 0.0],
+                [0.4, 0.3, 0.2],
+                [-1.131688540, 0.293139333, -0.914589019],
+                [1.131688540, 2.706860667, 0.914589019],
+            ),
+        ];
+        for (obstacle_type, position, rotation, expected_min, expected_max) in cases {
+            let world_box = set.world_box(&test_obstacle(obstacle_type, position, rotation));
+            for axis in 0..3 {
+                assert!(
+                    (world_box.min[axis] - expected_min[axis]).abs() <= 1e-6,
+                    "{obstacle_type} min axis {axis} got {} want {}",
+                    world_box.min[axis],
+                    expected_min[axis]
+                );
+                assert!(
+                    (world_box.max[axis] - expected_max[axis]).abs() <= 1e-6,
+                    "{obstacle_type} max axis {axis} got {} want {}",
+                    world_box.max[axis],
+                    expected_max[axis]
+                );
+            }
+        }
+    }
+
+    #[test]
     fn check_collision_hits_wall_probe() {
         let mut set = ObstacleSet::new();
         set.obstacles.push(test_obstacle("wall", [1.0, 0.5, 0.0], [0.0, 0.0, 0.0]));
@@ -1293,7 +1421,10 @@ mod tests {
         assert_eq!(obstacles[0].obstacle_type, "tower");
         assert_eq!(obstacles[0].position, [1.0, 2.0, 3.0]);
         assert_eq!(obstacles[0].scale, [1.0, 1.0, 1.0]);
-        assert_eq!(obstacles[0].name, "tower 1");
+        assert_eq!(obstacles[0].name, "");
+        let mut set = ObstacleSet::new();
+        set.import(obstacles);
+        assert_eq!(set.obstacles[0].name, "tower 1");
         let obstacles = import_json(
             r#"{"obstacles":[{"type":"cone","position":[0,1,0],"radius":0.3}]}"#,
         )
@@ -1329,8 +1460,65 @@ mod tests {
         assert_eq!(obstacles.len(), 2);
         assert_eq!(obstacles[0].name, "Custom");
         assert_eq!(obstacles[0].position, [1.0, 0.25, 2.0]);
-        assert_eq!(obstacles[1].name, "wall 2");
+        assert_eq!(obstacles[1].name, "");
         assert_eq!(obstacles[1].position, [3.0, 0.5, 4.0]);
+        let mut set = ObstacleSet::new();
+        set.import(obstacles);
+        assert_eq!(set.obstacles[1].name, "wall 2");
+    }
+
+    #[test]
+    fn import_auto_names_number_by_accepted_index() {
+        let defs = import_json(
+            r#"[{"type":"tower","position":[99,1,0]},{"type":"cone","position":[0,1,0]},{"type":"sphere","position":[1,1,0]}]"#,
+        )
+        .expect("parse");
+        let mut set = ObstacleSet::new();
+        assert_eq!(set.import(defs), 1);
+        let names: Vec<&str> = set
+            .obstacles
+            .iter()
+            .map(|obstacle| obstacle.name.as_str())
+            .collect();
+        assert_eq!(names, ["cone 1", "sphere 2"]);
+    }
+
+    #[test]
+    fn import_empty_label_falls_back_to_auto_name() {
+        let obstacles = import_json(r#"[{"type":"cone","position":[0,1,0],"label":""}]"#)
+            .expect("parse");
+        assert_eq!(obstacles[0].name, "");
+        let mut set = ObstacleSet::new();
+        set.import(obstacles);
+        assert_eq!(set.obstacles[0].name, "cone 1");
+    }
+
+    #[test]
+    fn import_json_string_numbers_use_js_number() {
+        let obstacles = import_json(
+            r#"[{"type":"tower","position":["1.5","2","3"]},{"type":"cone","position":["0x10",1,0]}]"#,
+        )
+        .expect("parse");
+        assert_eq!(obstacles[0].position, [1.5, 2.0, 3.0]);
+        assert_eq!(obstacles[1].position[0], 16.0);
+        let mut set = ObstacleSet::new();
+        assert_eq!(set.import(obstacles), 1);
+    }
+
+    #[test]
+    fn import_geojson_empty_title_falls_back_to_id() {
+        let text = r#"{"type":"FeatureCollection","features":[
+            {"type":"Feature","id":"ID9","properties":{"title":""},"geometry":{"type":"Point","coordinates":[0,0]}}
+        ]}"#;
+        let obstacles = import_geojson(text).expect("geojson import");
+        assert_eq!(obstacles[0].name, "ID9");
+    }
+
+    #[test]
+    fn import_json_numeric_color_normalizes_to_hex() {
+        let obstacles = import_json(r#"[{"type":"cone","position":[0,1,0],"color":4889704}]"#)
+            .expect("parse");
+        assert_eq!(obstacles[0].color.as_deref(), Some("#4a9c68"));
     }
 
     #[test]
@@ -1376,6 +1564,41 @@ mod tests {
         let rejected = set.import(defs);
         assert_eq!(rejected, 1, "malformed vertex body must be boundary-rejected");
         assert!(set.obstacles.is_empty());
+    }
+
+    #[test]
+    fn import_array_numbers_use_js_number_coercion() {
+        let obstacles = import_json(r#"[{"type":"wall","position":[[5],1,0]}]"#).expect("parse");
+        assert_eq!(obstacles[0].position, [5.0, 1.0, 0.0]);
+        let mut set = ObstacleSet::new();
+        assert_eq!(set.import(obstacles), 1);
+        assert!(set.obstacles.is_empty());
+
+        let obstacles =
+            import_json(r#"[{"type":"wall","position":[0,1,0],"scale":[[2]]}]"#).expect("parse");
+        assert_eq!(obstacles[0].scale, [2.0, 1.0, 1.0]);
+
+        let obstacles =
+            import_json(r#"[{"cx":0,"cz":0,"width":[3],"height":1,"depth":1}]"#).expect("parse");
+        assert_eq!(obstacles[0].position, [0.0, 0.5, 0.0]);
+        assert_eq!(obstacles[0].scale, [6.0, 1.0, 0.5]);
+
+        let obstacles =
+            import_json(r#"[{"type":"wall","position":[0,1,0],"rotation":[[1],2,3]}]"#)
+                .expect("parse");
+        assert_eq!(obstacles[0].rotation, [1.0, 2.0, 3.0]);
+
+        let obstacles =
+            import_json(r#"[{"type":"wall","position":[0,1,0],"scale":[[]]}]"#).expect("parse");
+        assert_eq!(obstacles[0].scale, [0.0, 1.0, 1.0]);
+
+        let obstacles =
+            import_json(r#"[{"cx":0,"cz":0,"width":[],"height":1,"depth":1}]"#).expect("parse");
+        assert_eq!(obstacles[0].scale, [0.0, 1.0, 0.5]);
+
+        let text = r#"{"type":"Feature","properties":{"width":[3]},"geometry":{"type":"Point","coordinates":[0,0]}}"#;
+        let obstacles = import_geojson(text).expect("geojson");
+        assert_eq!(obstacles[0].scale, [6.0, 1.0, 1.0]);
     }
 
     #[test]

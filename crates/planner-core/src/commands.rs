@@ -212,7 +212,7 @@ pub fn js_parse_float(text: &str) -> Option<f64> {
             end = exp_index;
         }
     }
-    rest[start..end].parse::<f64>().ok()
+    rest[start..end].parse::<f64>().ok().map(|v| sign * v)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -86,24 +86,37 @@ fn param_text(command: &Command, key: &str) -> String {
     }
 }
 
-fn eval_param(command: &Command, key: &str, vars: &BTreeMap<String, VarValue>) -> f64 {
+fn eval_param_value(
+    command: &Command,
+    key: &str,
+    vars: &BTreeMap<String, VarValue>,
+) -> VarValue {
     match command.params.get(key) {
         Some(ParamValue::Number(n)) => {
             if vars.is_empty() {
-                *n
+                VarValue::Num(*n)
             } else {
-                0.0
+                VarValue::Num(0.0)
             }
         }
-        Some(ParamValue::Str(text)) => runtime::eval_expr(text, vars),
+        Some(ParamValue::Str(text)) => runtime::eval_var(text, vars),
         Some(ParamValue::Bool(flag)) => {
             if vars.is_empty() && *flag {
-                1.0
+                VarValue::Num(1.0)
             } else {
-                0.0
+                VarValue::Num(0.0)
             }
         }
-        None => 0.0,
+        None => VarValue::Num(0.0),
+    }
+}
+
+fn eval_condition(command: &Command, key: &str, vars: &BTreeMap<String, VarValue>) -> bool {
+    match command.params.get(key) {
+        Some(ParamValue::Number(n)) => vars.is_empty() && is_truthy(*n),
+        Some(ParamValue::Bool(flag)) => vars.is_empty() && *flag,
+        Some(ParamValue::Str(text)) => runtime::eval_truthy(text, vars),
+        None => false,
     }
 }
 
@@ -351,36 +364,39 @@ fn dispatch(
         CommandType::Buzzer => pd(command.param_f64("dur"), 500.0) / 1000.0,
         CommandType::VarDeclare => {
             let name = ps(command.param_str("name"), "x");
-            let value = eval_param(command, "value", &runtime.vars);
-            runtime.vars.insert(name.to_string(), VarValue::Num(value));
+            let value = eval_param_value(command, "value", &runtime.vars);
+            runtime.vars.insert(name.to_string(), value);
             0.0
         }
         CommandType::SetVar => {
             let name = ps(command.param_str("name"), "x");
-            let op = ps(command.param_str("op"), "=");
-            let value = eval_param(command, "value", &runtime.vars);
+            let op = command.param_str("op").unwrap_or("");
+            let value = eval_param_value(command, "value", &runtime.vars);
             let current = runtime
                 .vars
                 .get(name)
                 .cloned()
                 .unwrap_or(VarValue::Num(0.0));
-            let next = if op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=" {
-                runtime::compound_set(&current, op, value)
-            } else {
-                current
+            let assigned = match op {
+                "=" | "+=" | "-=" | "*=" | "/=" => {
+                    Some(runtime::compound_set(&current, op, &value))
+                }
+                _ => None,
             };
-            runtime.vars.insert(name.to_string(), next);
+            if let Some(next) = assigned {
+                runtime.vars.insert(name.to_string(), next);
+            }
             0.0
         }
         CommandType::PrintVar => 0.0,
         CommandType::IfBlock => {
-            if is_truthy(eval_param(command, "condition", &runtime.vars)) {
+            if eval_condition(command, "condition", &runtime.vars) {
                 process_commands(&command.children, state, runtime, ctx, None, None);
             }
             0.0
         }
         CommandType::ElifBlock => {
-            if is_truthy(eval_param(command, "condition", &runtime.vars)) {
+            if eval_condition(command, "condition", &runtime.vars) {
                 process_commands(&command.children, state, runtime, ctx, None, None);
             }
             0.0
@@ -392,9 +408,7 @@ fn dispatch(
         CommandType::EndBlock => 0.0,
         CommandType::WhileBlock => {
             let mut loops = 0u64;
-            while is_truthy(eval_param(command, "condition", &runtime.vars))
-                && loops < MAX_WHILE_LOOPS
-            {
+            while eval_condition(command, "condition", &runtime.vars) && loops < MAX_WHILE_LOOPS {
                 process_commands(&command.children, state, runtime, ctx, None, None);
                 loops += 1;
             }
@@ -402,9 +416,9 @@ fn dispatch(
         }
         CommandType::ForBlock => {
             let var_name = ps(command.param_str("var"), "i");
-            let start = pd(command.param_f64("start"), 0.0) as i64;
-            let end_val = pd(command.param_f64("end_val"), 5.0) as i64;
-            let step = pd(command.param_f64("step"), 1.0) as i64;
+            let start = pi(command, "start", 0.0) as i64;
+            let end_val = pi(command, "end_val", 5.0) as i64;
+            let step = pi(command, "step", 1.0) as i64;
             if step != 0 {
                 let mut i = start;
                 while (step > 0 && i < end_val) || (step < 0 && i > end_val) {
@@ -483,6 +497,8 @@ fn dispatch(
         }
         CommandType::FuncDef => {
             let name = ps(command.param_str("name"), "my_func");
+            let body = serde_json::to_string(&command.children).unwrap_or_else(|_| "[]".to_string());
+            runtime.vars.insert(format!("__func_{name}"), VarValue::Str(body));
             controlflow::define_function(ctx, name, command.children.clone());
             0.0
         }
@@ -496,27 +512,26 @@ fn dispatch(
         CommandType::ListDeclare => {
             let name = ps(command.param_str("name"), "my_list");
             let text = param_text(command, "values");
-            let items: Vec<f64> = text
+            let items: Vec<VarValue> = text
                 .split(',')
-                .map(|item| runtime::eval_expr(item.trim(), &runtime.vars))
+                .map(|item| runtime::eval_var(item.trim(), &runtime.vars))
                 .collect();
             runtime.vars.insert(name.to_string(), VarValue::List(items));
             0.0
         }
         CommandType::ListAppend => {
             let name = ps(command.param_str("name"), "my_list");
-            let value = eval_param(command, "value", &runtime.vars);
-            runtime::list_append(runtime, name, value);
+            runtime::list_ensure(runtime, name);
+            let value = eval_param_value(command, "value", &runtime.vars);
+            runtime::list_push(runtime, name, value);
             0.0
         }
         CommandType::ListGet => {
             let list_name = ps(command.param_str("list_name"), "my_list");
-            let index = pd(command.param_f64("index"), 0.0) as i64;
+            let index = parse_int_param(command.params.get("index"));
             let var_name = ps(command.param_str("var"), "val");
-            let value = runtime::list_get(runtime, list_name, index).unwrap_or(0.0);
-            runtime
-                .vars
-                .insert(var_name.to_string(), VarValue::Num(value));
+            let value = runtime::list_get(runtime, list_name, index);
+            runtime.vars.insert(var_name.to_string(), value);
             0.0
         }
         CommandType::UserInput => {
@@ -542,5 +557,201 @@ fn dispatch(
         }
         CommandType::TimeSleep | CommandType::DroneSleep => pd(command.param_f64("dur"), 1.0),
         CommandType::RandomLed | CommandType::GetDistance => 0.0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text(value: &str) -> ParamValue {
+        ParamValue::Str(value.to_string())
+    }
+
+    fn number(value: f64) -> ParamValue {
+        ParamValue::Number(value)
+    }
+
+    fn make(
+        id: &str,
+        command_type: CommandType,
+        params: &[(&str, ParamValue)],
+        children: Vec<Command>,
+    ) -> Command {
+        let mut map = BTreeMap::new();
+        for (key, value) in params {
+            map.insert((*key).to_string(), value.clone());
+        }
+        Command {
+            id: id.to_string(),
+            command_type,
+            params: map,
+            children,
+        }
+    }
+
+    fn hover_children() -> Vec<Command> {
+        vec![make(
+            "h",
+            CommandType::Hover,
+            &[("dur", number(1.0))],
+            Vec::new(),
+        )]
+    }
+
+    #[test]
+    fn string_variable_condition_runs_body() {
+        let commands = vec![
+            make(
+                "a",
+                CommandType::VarDeclare,
+                &[("name", text("c")), ("value", text("\"green\""))],
+                Vec::new(),
+            ),
+            make(
+                "b",
+                CommandType::IfBlock,
+                &[("condition", text("c == \"green\""))],
+                hover_children(),
+            ),
+            make("z", CommandType::Led, &[], Vec::new()),
+        ];
+        let result = simulate_commands(&commands, None);
+        assert!(result.total_duration > 1.0);
+    }
+
+    #[test]
+    fn set_var_string_assignment_survives() {
+        let commands = vec![
+            make(
+                "a",
+                CommandType::VarDeclare,
+                &[("name", text("x")), ("value", number(1.0))],
+                Vec::new(),
+            ),
+            make(
+                "b",
+                CommandType::SetVar,
+                &[
+                    ("name", text("x")),
+                    ("op", text("=")),
+                    ("value", text("\"green\"")),
+                ],
+                Vec::new(),
+            ),
+            make(
+                "c",
+                CommandType::IfBlock,
+                &[("condition", text("x == \"green\""))],
+                hover_children(),
+            ),
+            make("z", CommandType::Led, &[], Vec::new()),
+        ];
+        let result = simulate_commands(&commands, None);
+        assert!(result.total_duration > 1.0);
+    }
+
+    #[test]
+    fn list_elements_preserve_strings() {
+        let commands = vec![
+            make(
+                "a",
+                CommandType::ListDeclare,
+                &[("name", text("L")), ("values", text("\"a\", \"b\""))],
+                Vec::new(),
+            ),
+            make(
+                "b",
+                CommandType::ListGet,
+                &[
+                    ("list_name", text("L")),
+                    ("index", number(0.0)),
+                    ("var", text("v")),
+                ],
+                Vec::new(),
+            ),
+            make(
+                "c",
+                CommandType::IfBlock,
+                &[("condition", text("v == \"a\""))],
+                hover_children(),
+            ),
+            make("z", CommandType::Led, &[], Vec::new()),
+        ];
+        let result = simulate_commands(&commands, None);
+        assert!(result.total_duration > 1.0);
+    }
+
+    #[test]
+    fn set_var_unknown_op_leaves_variable() {
+        let commands = vec![
+            make(
+                "a",
+                CommandType::VarDeclare,
+                &[("name", text("x")), ("value", number(3.0))],
+                Vec::new(),
+            ),
+            make(
+                "b",
+                CommandType::SetVar,
+                &[("name", text("x")), ("value", text("5"))],
+                Vec::new(),
+            ),
+            make(
+                "c",
+                CommandType::IfBlock,
+                &[("condition", text("x > 4"))],
+                hover_children(),
+            ),
+            make("z", CommandType::Led, &[], Vec::new()),
+        ];
+        let result = simulate_commands(&commands, None);
+        assert!(result.total_duration <= 0.2);
+    }
+
+    #[test]
+    fn list_get_missing_index_is_zero() {
+        let commands = vec![
+            make(
+                "a",
+                CommandType::ListDeclare,
+                &[("name", text("L")), ("values", text("5, 7"))],
+                Vec::new(),
+            ),
+            make(
+                "b",
+                CommandType::ListGet,
+                &[("list_name", text("L")), ("var", text("v"))],
+                Vec::new(),
+            ),
+            make(
+                "c",
+                CommandType::IfBlock,
+                &[("condition", text("v == 0"))],
+                hover_children(),
+            ),
+            make("z", CommandType::Led, &[], Vec::new()),
+        ];
+        let result = simulate_commands(&commands, None);
+        assert!(result.total_duration > 1.0);
+    }
+
+    #[test]
+    fn for_block_uses_parse_int_bounds() {
+        let commands = vec![
+            make(
+                "a",
+                CommandType::ForBlock,
+                &[
+                    ("var", text("i")),
+                    ("start", number(0.0)),
+                    ("end_val", number(2.0)),
+                    ("step", number(0.5)),
+                ],
+                vec![make("b", CommandType::Led, &[], Vec::new())],
+            ),
+        ];
+        let result = simulate_commands(&commands, None);
+        assert_eq!(result.total_duration, 0.2);
     }
 }

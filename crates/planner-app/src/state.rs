@@ -1,6 +1,6 @@
 use planner_core::commands::{Command, CommandType, ParamValue, command_defs};
 use planner_core::golden::{LedValue, SimResult};
-use planner_core::obstacles::ObstacleSet;
+use planner_core::obstacles::{Obstacle, ObstacleSet};
 use planner_core::planio::{Plan, PlanDrone};
 use planner_core::sim::drive::SimState;
 use std::collections::BTreeMap;
@@ -120,6 +120,8 @@ pub struct AppState {
     collision_points: Vec<[f64; 3]>,
     pub camera_reset_pending: bool,
     pub boundary_visible: bool,
+    pub obstacles_visible: bool,
+    stashed_obstacles: Vec<Obstacle>,
     pub generated_code: String,
     pub dirty: bool,
     pub camera: CameraState,
@@ -137,9 +139,12 @@ impl Default for AppState {
 
 impl AppState {
     pub fn new() -> AppState {
-        AppState {
+        let mut state = AppState {
             plan: Plan::default_plan(),
-            obstacles: ObstacleSet::default(),
+            obstacles: ObstacleSet {
+                obstacles: planner_core::obstacles::BASE_OBSTACLES.clone(),
+                ..ObstacleSet::default()
+            },
             selection: Selection::default(),
             sim_result: None,
             sim_results: BTreeMap::new(),
@@ -165,6 +170,8 @@ impl AppState {
             collision_points: Vec::new(),
             camera_reset_pending: false,
             boundary_visible: true,
+            obstacles_visible: true,
+            stashed_obstacles: Vec::new(),
             generated_code: String::new(),
             dirty: false,
             camera: CameraState::default(),
@@ -172,7 +179,9 @@ impl AppState {
             show_right: true,
             tick_epoch: 0,
             last_tick_epoch: u64::MAX,
-        }
+        };
+        state.refresh_sim();
+        state
     }
 
     pub fn log(&mut self, msg: impl Into<String>) {
@@ -206,6 +215,43 @@ impl AppState {
         &self.collision_points
     }
 
+    pub fn toggle_obstacle_visibility(&mut self) {
+        if self.obstacles_visible {
+            self.stashed_obstacles = std::mem::take(&mut self.obstacles.obstacles);
+            self.obstacles_visible = false;
+        } else {
+            self.obstacles.obstacles = std::mem::take(&mut self.stashed_obstacles);
+            self.obstacles_visible = true;
+        }
+    }
+
+    pub fn obstacle_store(&self) -> &Vec<Obstacle> {
+        if self.obstacles_visible {
+            &self.obstacles.obstacles
+        } else {
+            &self.stashed_obstacles
+        }
+    }
+
+    pub fn obstacle_store_mut(&mut self) -> &mut Vec<Obstacle> {
+        if self.obstacles_visible {
+            &mut self.obstacles.obstacles
+        } else {
+            &mut self.stashed_obstacles
+        }
+    }
+
+    fn collision_obstacle_set(&self) -> ObstacleSet {
+        if self.obstacles_visible {
+            self.obstacles.clone()
+        } else {
+            ObstacleSet {
+                obstacles: self.stashed_obstacles.clone(),
+                boundary: self.obstacles.boundary,
+            }
+        }
+    }
+
     pub fn max_duration(&self) -> f64 {
         let mut max_duration = 0.0f64;
         for result in self.sim_results.values() {
@@ -228,10 +274,11 @@ impl AppState {
     }
 
     fn end_status(&self) -> &'static str {
-        let active_id = self.active_drone_index().map(|i| self.plan.drones[i].id.clone());
-        let result = active_id
-            .as_ref()
-            .and_then(|id| self.sim_results.get(id))
+        let result = self
+            .plan
+            .drones
+            .iter()
+            .find_map(|drone| self.sim_results.get(&drone.id))
             .or_else(|| self.sim_results.values().next());
         match result.and_then(|r| r.positions.last()) {
             Some(p) if p.z < 0.15 => "Landed",
@@ -253,13 +300,13 @@ impl AppState {
         if self.playback_ended || self.playback_time <= 0.0 {
             self.playback_time = 0.0;
             self.trail_generation += 1;
-            self.flying = true;
-            self.has_collision = false;
             self.collision_marks.clear();
             self.collision_points.clear();
-            self.telemetry_head = 0;
-            self.telemetry_count = 0;
         }
+        self.flying = true;
+        self.has_collision = false;
+        self.telemetry_head = 0;
+        self.telemetry_count = 0;
         self.playback_ended = false;
         self.playback.playing = true;
         self.update_flight_status();
@@ -345,7 +392,7 @@ impl AppState {
         };
         self.sim_results = planner_core::sim::simulate_swarm_with(
             &self.plan,
-            Some(&self.obstacles),
+            Some(&self.collision_obstacle_set()),
             Some(&mut on_start),
         );
         self.route_map = route_map;
@@ -375,7 +422,6 @@ impl AppState {
         self.selection.drone_index = self.active_drone_index();
         self.collision_marks.clear();
         self.collision_points.clear();
-        let mut hits = Vec::new();
         for (id, result) in &self.sim_results {
             for collision in &result.collisions {
                 let key = (id.clone(), collision.obstacle.id.clone());
@@ -384,15 +430,7 @@ impl AppState {
                     self.collision_points
                         .push([collision.position.x, collision.position.y, collision.position.z]);
                 }
-                hits.push(format!(
-                    "COLLISION: {id} hit {} ({})",
-                    collision.obstacle.obstacle_type, collision.obstacle.name
-                ));
             }
-        }
-        self.has_collision = !hits.is_empty();
-        for line in hits {
-            self.log_level("error", line);
         }
         self.update_flight_status();
     }
@@ -401,9 +439,10 @@ impl AppState {
         let Some(frame) = self.current_frame() else {
             return;
         };
+        let obstacle_set = self.collision_obstacle_set();
         let mut new_hits = Vec::new();
         for (id, point) in &frame.positions {
-            if let Some(hit) = self.obstacles.check_collision(point.x, point.y, point.z, 0.1) {
+            if let Some(hit) = obstacle_set.check_collision(point.x, point.y, point.z, 0.1) {
                 let key = (id.clone(), hit.obstacle.id.clone());
                 if !self.collision_marks.contains(&key) {
                     new_hits.push((key, hit.obstacle.obstacle_type.clone(), hit.obstacle.name.clone(), [point.x, point.y, point.z]));
@@ -855,8 +894,13 @@ impl AppState {
         };
         match parsed {
             Ok(accepted) => {
-                let rejected = self.obstacles.import(accepted);
-                let kept = self.obstacles.obstacles.len();
+                let mut set = ObstacleSet {
+                    obstacles: Vec::new(),
+                    boundary: self.obstacles.boundary,
+                };
+                let rejected = set.import(accepted);
+                *self.obstacle_store_mut() = set.obstacles;
+                let kept = self.obstacle_store().len();
                 self.log(format!("Imported {kept} obstacles from {filename}"));
                 if rejected > 0 {
                     self.log_level(
@@ -867,7 +911,7 @@ impl AppState {
                 self.selection.obstacle_id = None;
                 self.mark_dirty();
                 self.refresh_sim();
-                Ok(kept)
+                Ok(rejected)
             }
             Err(err) => {
                 self.log_level("error", format!("Error importing obstacles: {err}"));

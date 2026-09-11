@@ -4,15 +4,21 @@ Native Rust rewrite of the Drone Planner (Robolink CoDrone EDU flight planner,
 simulator, and code generator). A portable desktop application that runs on
 low-end school Windows laptops WITHOUT admin rights.
 
+## License
+
+MIT. See [LICENSE](LICENSE). Generated Python uses the official Robolink
+`codrone_edu` library API; CoDrone EDU is a product of Robolink Corp. This
+project is an independent educational tool and is not affiliated with or
+endorsed by Robolink.
+
 Target machine: botched school Win11, 4th-gen i5, 4GB RAM, Intel integrated GPU.
 Renderer: eframe + egui + GLOW (OpenGL 3.3-class). No wgpu, no Vulkan, no WebView.
 
 ## Status
 
-- Engine core (aero, simulator, commands, obstacles, codegen, plan I/O): implemented and tested
-- Scene + UI (viewport, plan tree, palette, telemetry, obstacles panel): implemented and tested
+- Engine core (aero, simulator, commands, obstacles, codegen, plan I/O): implemented, golden-parity tested (82 tests)
+- Scene + UI (viewport, plan tree, palette, telemetry, obstacles panel): implemented, feature-parity audited against the reference app
 - Portable Windows exe build: see BUILD_LOG.md
-- DP_SMOKE=1 cargo run -p planner-app: prints "planner-app smoke ok", no window
 
 ## Layout
 

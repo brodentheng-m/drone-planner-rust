@@ -53,7 +53,9 @@ pub struct ViewportPanel {
     target: [f32; 3],
     prev_mode: u8,
     follow_offset: Option<[f32; 3]>,
+    prev_scrub: f64,
     seen_generation: u64,
+    trail_signature: u64,
     trails: BTreeMap<String, Vec<[f32; 3]>>,
     spin: f32,
     waypoint_hits: Vec<(Pos2, usize)>,
@@ -307,7 +309,9 @@ impl ViewportPanel {
             target: [0.0, 0.15, 0.0],
             prev_mode: 1,
             follow_offset: None,
+            prev_scrub: 0.0,
             seen_generation: 0,
+            trail_signature: 0,
             trails: BTreeMap::new(),
             spin: 0.0,
             waypoint_hits: Vec::new(),
@@ -460,7 +464,9 @@ impl ViewportPanel {
     }
 
     fn update_trails(&mut self, state: &AppState, frame: &Option<FrameState>) {
-        if state.trail_generation != self.seen_generation {
+        let signature = state_signature(state);
+        if signature != self.trail_signature || state.trail_generation != self.seen_generation {
+            self.trail_signature = signature;
             self.seen_generation = state.trail_generation;
             self.follow_offset = None;
             self.trails.clear();
@@ -526,14 +532,12 @@ impl ViewportPanel {
 
     fn build_trails(&self, g: &mut SceneGeom) {
         let base = rgb(0x22c55e);
+        let color = [base[0], base[1], base[2], 0.8];
         for trail in self.trails.values() {
-            let n = trail.len();
             if let Some(first) = trail.first() {
                 emit_octa(g, *first, 0.06, rgba(0x3fb950, 0.9));
             }
-            for (i, pair) in trail.windows(2).enumerate() {
-                let t = (i + 1) as f32 / n.max(1) as f32;
-                let color = [base[0], base[1], base[2], 0.15 + 0.65 * t];
+            for pair in trail.windows(2) {
                 push_line(g, pair[0], pair[1], color);
             }
             if let Some(head) = trail.last() {
@@ -574,14 +578,18 @@ impl ViewportPanel {
         }
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
         self.handle_input(ui, &response);
-        let dt = ui.input(|input| input.stable_dt) as f64;
-        if state.tick(dt) {
+        if state.tick(0.033) {
             self.spin += 50.0 * 0.033;
         }
         let frame = state.current_frame();
         self.update_trails(state, &frame);
         self.sync_camera(state);
-        self.follow_drone(state, &frame);
+        let follow_now = state.playback.playing
+            || (state.playback_scrub - self.prev_scrub).abs() > f64::EPSILON;
+        self.prev_scrub = state.playback_scrub;
+        if follow_now {
+            self.follow_drone(state, &frame);
+        }
         if state.camera_reset_pending {
             state.camera_reset_pending = false;
             self.reset_camera();
@@ -648,6 +656,47 @@ struct SceneGeom {
     tris: Vec<f32>,
 }
 
+fn sig_bytes(seed: &mut u64, bytes: &[u8]) {
+    for byte in bytes {
+        *seed ^= *byte as u64;
+        *seed = seed.wrapping_mul(1099511628211);
+    }
+}
+
+fn state_signature(state: &AppState) -> u64 {
+    let mut hash = 14695981039346656037u64;
+    sig_bytes(&mut hash, &(state.plan.drones.len() as u64).to_le_bytes());
+    sig_bytes(&mut hash, state.generated_code.as_bytes());
+    let total_points: usize = state.sim_results.values().map(|r| r.positions.len()).sum();
+    sig_bytes(&mut hash, &(total_points as u64).to_le_bytes());
+    sig_bytes(&mut hash, &state.max_duration().to_bits().to_le_bytes());
+    let obstacles = state.obstacle_store();
+    sig_bytes(&mut hash, &(obstacles.len() as u64).to_le_bytes());
+    for obstacle in obstacles {
+        sig_bytes(&mut hash, obstacle.obstacle_type.as_bytes());
+        sig_bytes(&mut hash, obstacle.name.as_bytes());
+        for value in obstacle
+            .position
+            .iter()
+            .chain(obstacle.rotation.iter())
+            .chain(obstacle.scale.iter())
+        {
+            sig_bytes(&mut hash, &value.to_bits().to_le_bytes());
+        }
+    }
+    let boundary = &state.obstacles.boundary;
+    for value in [
+        boundary.min_x,
+        boundary.max_x,
+        boundary.min_z,
+        boundary.max_z,
+        boundary.max_y,
+    ] {
+        sig_bytes(&mut hash, &value.to_bits().to_le_bytes());
+    }
+    hash
+}
+
 fn push_line(g: &mut SceneGeom, a: [f32; 3], b: [f32; 3], color: [f32; 4]) {
     for v in [a, b] {
         g.lines
@@ -695,7 +744,7 @@ fn build_grid(g: &mut SceneGeom) {
     let minor_div = (GRID_SIZE / FT).round() as i32;
     for i in 0..=minor_div {
         let t = -half + GRID_SIZE * i as f32 / minor_div as f32;
-        let color = if i * 2 == minor_div {
+        let color = if i == minor_div / 2 {
             rgba(0x30363d, 0.6)
         } else {
             rgba(0x21262d, 0.6)
@@ -706,7 +755,7 @@ fn build_grid(g: &mut SceneGeom) {
     let major_div = (GRID_SIZE / (FT * 5.0)).round() as i32;
     for i in 0..=major_div {
         let t = -half + GRID_SIZE * i as f32 / major_div as f32;
-        let color = if i * 2 == major_div {
+        let color = if i == major_div / 2 {
             rgba(0x484f58, 0.8)
         } else {
             rgba(0x30363d, 0.8)
@@ -724,18 +773,329 @@ fn active_drone_id(state: &AppState) -> Option<String> {
         .or_else(|| state.plan.drones.first().map(|drone| drone.id.clone()))
 }
 
-fn hex_color(text: &str) -> Option<[f32; 3]> {
-    let trimmed = text.trim();
-    let hex = trimmed
-        .strip_prefix('#')
-        .or_else(|| trimmed.strip_prefix("0x"))
-        .or_else(|| trimmed.strip_prefix("0X"))
-        .unwrap_or(trimmed);
-    if hex.len() != 6 {
+fn hue2rgb(p: f32, q: f32, t: f32) -> f32 {
+    let mut t = t;
+    if t < 0.0 {
+        t += 1.0;
+    }
+    if t > 1.0 {
+        t -= 1.0;
+    }
+    if t < 1.0 / 6.0 {
+        p + (q - p) * 6.0 * t
+    } else if t < 1.0 / 2.0 {
+        q
+    } else if t < 2.0 / 3.0 {
+        p + (q - p) * 6.0 * (2.0 / 3.0 - t)
+    } else {
+        p
+    }
+}
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> [f32; 3] {
+    let h = h.rem_euclid(1.0);
+    let s = s.clamp(0.0, 1.0);
+    let l = l.clamp(0.0, 1.0);
+    if s == 0.0 {
+        return [l, l, l];
+    }
+    let p = if l <= 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = 2.0 * l - p;
+    [
+        hue2rgb(q, p, h + 1.0 / 3.0),
+        hue2rgb(q, p, h),
+        hue2rgb(q, p, h - 1.0 / 3.0),
+    ]
+}
+
+fn decimal_literal(text: &str) -> Option<f32> {
+    if text.is_empty() {
         return None;
     }
-    let value = u32::from_str_radix(hex, 16).ok()?;
+    let mut dots = 0;
+    let mut digits = 0;
+    for byte in text.bytes() {
+        if byte.is_ascii_digit() {
+            digits += 1;
+        } else if byte == b'.' {
+            dots += 1;
+            if dots > 1 {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+    if digits == 0 || text.ends_with('.') {
+        return None;
+    }
+    text.parse::<f32>().ok()
+}
+
+fn digit_uint(text: &str) -> Option<u32> {
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    text.parse::<u32>().ok()
+}
+
+fn color_parts(components: &str) -> Option<Vec<&str>> {
+    let parts: Vec<&str> = components.split(',').map(|part| part.trim()).collect();
+    if parts.len() < 3 || parts.len() > 4 {
+        return None;
+    }
+    if parts.iter().any(|part| part.is_empty()) {
+        return None;
+    }
+    if parts.len() == 4 && decimal_literal(parts[3]).is_none() {
+        return None;
+    }
+    Some(parts)
+}
+
+fn rgb_channel(part: &str, percent: bool) -> Option<f32> {
+    if percent {
+        let value = digit_uint(part.strip_suffix('%')?)?;
+        Some(value.min(100) as f32 / 100.0)
+    } else {
+        let value = digit_uint(part)?;
+        Some(value.min(255) as f32 / 255.0)
+    }
+}
+
+fn percent_channel(part: &str) -> Option<f32> {
+    decimal_literal(part.strip_suffix('%')?)
+}
+
+fn parse_color_function(name: &str, components: &str) -> Option<[f32; 3]> {
+    match name {
+        "rgb" | "rgba" => {
+            let parts = color_parts(components)?;
+            if let (Some(r), Some(g), Some(b)) = (
+                rgb_channel(parts[0], false),
+                rgb_channel(parts[1], false),
+                rgb_channel(parts[2], false),
+            ) {
+                return Some([r, g, b]);
+            }
+            let parts = color_parts(components)?;
+            if let (Some(r), Some(g), Some(b)) = (
+                rgb_channel(parts[0], true),
+                rgb_channel(parts[1], true),
+                rgb_channel(parts[2], true),
+            ) {
+                return Some([r, g, b]);
+            }
+            None
+        }
+        "hsl" | "hsla" => {
+            let parts = color_parts(components)?;
+            let h = decimal_literal(parts[0])?;
+            let s = percent_channel(parts[1])?;
+            let l = percent_channel(parts[2])?;
+            Some(hsl_to_rgb(h / 360.0, s / 100.0, l / 100.0))
+        }
+        _ => None,
+    }
+}
+
+fn color_function(text: &str) -> Option<(&str, &str)> {
+    let open = text.find('(')?;
+    let name = &text[..open];
+    if name.is_empty() {
+        return None;
+    }
+    if !name
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return None;
+    }
+    let rest = &text[open + 1..];
+    let close = rest.find(')')?;
+    Some((name, &rest[..close]))
+}
+
+fn css_color_name(name: &str) -> Option<[f32; 3]> {
+    let value = match name {
+        "aliceblue" => 0xf0f8ff,
+        "antiquewhite" => 0xfaebd7,
+        "aqua" => 0x00ffff,
+        "aquamarine" => 0x7fffd4,
+        "azure" => 0xf0ffff,
+        "beige" => 0xf5f5dc,
+        "bisque" => 0xffe4c4,
+        "black" => 0x000000,
+        "blanchedalmond" => 0xffebcd,
+        "blue" => 0x0000ff,
+        "blueviolet" => 0x8a2be2,
+        "brown" => 0xa52a2a,
+        "burlywood" => 0xdeb887,
+        "cadetblue" => 0x5f9ea0,
+        "chartreuse" => 0x7fff00,
+        "chocolate" => 0xd2691e,
+        "coral" => 0xff7f50,
+        "cornflowerblue" => 0x6495ed,
+        "cornsilk" => 0xfff8dc,
+        "crimson" => 0xdc143c,
+        "cyan" => 0x00ffff,
+        "darkblue" => 0x00008b,
+        "darkcyan" => 0x008b8b,
+        "darkgoldenrod" => 0xb8860b,
+        "darkgray" => 0xa9a9a9,
+        "darkgreen" => 0x006400,
+        "darkgrey" => 0xa9a9a9,
+        "darkkhaki" => 0xbdb76b,
+        "darkmagenta" => 0x8b008b,
+        "darkolivegreen" => 0x556b2f,
+        "darkorange" => 0xff8c00,
+        "darkorchid" => 0x9932cc,
+        "darkred" => 0x8b0000,
+        "darksalmon" => 0xe9967a,
+        "darkseagreen" => 0x8fbc8f,
+        "darkslateblue" => 0x483d8b,
+        "darkslategray" => 0x2f4f4f,
+        "darkslategrey" => 0x2f4f4f,
+        "darkturquoise" => 0x00ced1,
+        "darkviolet" => 0x9400d3,
+        "deeppink" => 0xff1493,
+        "deepskyblue" => 0x00bfff,
+        "dimgray" => 0x696969,
+        "dimgrey" => 0x696969,
+        "dodgerblue" => 0x1e90ff,
+        "firebrick" => 0xb22222,
+        "floralwhite" => 0xfffaf0,
+        "forestgreen" => 0x228b22,
+        "fuchsia" => 0xff00ff,
+        "gainsboro" => 0xdcdcdc,
+        "ghostwhite" => 0xf8f8ff,
+        "gold" => 0xffd700,
+        "goldenrod" => 0xdaa520,
+        "gray" => 0x808080,
+        "green" => 0x008000,
+        "greenyellow" => 0xadff2f,
+        "grey" => 0x808080,
+        "honeydew" => 0xf0fff0,
+        "hotpink" => 0xff69b4,
+        "indianred" => 0xcd5c5c,
+        "indigo" => 0x4b0082,
+        "ivory" => 0xfffff0,
+        "khaki" => 0xf0e68c,
+        "lavender" => 0xe6e6fa,
+        "lavenderblush" => 0xfff0f5,
+        "lawngreen" => 0x7cfc00,
+        "lemonchiffon" => 0xfffacd,
+        "lightblue" => 0xadd8e6,
+        "lightcoral" => 0xf08080,
+        "lightcyan" => 0xe0ffff,
+        "lightgoldenrodyellow" => 0xfafad2,
+        "lightgray" => 0xd3d3d3,
+        "lightgreen" => 0x90ee90,
+        "lightgrey" => 0xd3d3d3,
+        "lightpink" => 0xffb6c1,
+        "lightsalmon" => 0xffa07a,
+        "lightseagreen" => 0x20b2aa,
+        "lightskyblue" => 0x87cefa,
+        "lightslategray" => 0x778899,
+        "lightslategrey" => 0x778899,
+        "lightsteelblue" => 0xb0c4de,
+        "lightyellow" => 0xffffe0,
+        "lime" => 0x00ff00,
+        "limegreen" => 0x32cd32,
+        "linen" => 0xfaf0e6,
+        "magenta" => 0xff00ff,
+        "maroon" => 0x800000,
+        "mediumaquamarine" => 0x66cdaa,
+        "mediumblue" => 0x0000cd,
+        "mediumorchid" => 0xba55d3,
+        "mediumpurple" => 0x9370db,
+        "mediumseagreen" => 0x3cb371,
+        "mediumslateblue" => 0x7b68ee,
+        "mediumspringgreen" => 0x00fa9a,
+        "mediumturquoise" => 0x48d1cc,
+        "mediumvioletred" => 0xc71585,
+        "midnightblue" => 0x191970,
+        "mintcream" => 0xf5fffa,
+        "mistyrose" => 0xffe4e1,
+        "moccasin" => 0xffe4b5,
+        "navajowhite" => 0xffdead,
+        "navy" => 0x000080,
+        "oldlace" => 0xfdf5e6,
+        "olive" => 0x808000,
+        "olivedrab" => 0x6b8e23,
+        "orange" => 0xffa500,
+        "orangered" => 0xff4500,
+        "orchid" => 0xda70d6,
+        "palegoldenrod" => 0xeee8aa,
+        "palegreen" => 0x98fb98,
+        "paleturquoise" => 0xafeeee,
+        "palevioletred" => 0xdb7093,
+        "papayawhip" => 0xffefd5,
+        "peachpuff" => 0xffdab9,
+        "peru" => 0xcd853f,
+        "pink" => 0xffc0cb,
+        "plum" => 0xdda0dd,
+        "powderblue" => 0xb0e0e6,
+        "purple" => 0x800080,
+        "rebeccapurple" => 0x663399,
+        "red" => 0xff0000,
+        "rosybrown" => 0xbc8f8f,
+        "royalblue" => 0x4169e1,
+        "saddlebrown" => 0x8b4513,
+        "salmon" => 0xfa8072,
+        "sandybrown" => 0xf4a460,
+        "seagreen" => 0x2e8b57,
+        "seashell" => 0xfff5ee,
+        "sienna" => 0xa0522d,
+        "silver" => 0xc0c0c0,
+        "skyblue" => 0x87ceeb,
+        "slateblue" => 0x6a5acd,
+        "slategray" => 0x708090,
+        "slategrey" => 0x708090,
+        "snow" => 0xfffafa,
+        "springgreen" => 0x00ff7f,
+        "steelblue" => 0x4682b4,
+        "tan" => 0xd2b48c,
+        "teal" => 0x008080,
+        "thistle" => 0xd8bfd8,
+        "tomato" => 0xff6347,
+        "turquoise" => 0x40e0d0,
+        "violet" => 0xee82ee,
+        "wheat" => 0xf5deb3,
+        "white" => 0xffffff,
+        "whitesmoke" => 0xf5f5f5,
+        "yellow" => 0xffff00,
+        "yellowgreen" => 0x9acd32,
+        _ => return None,
+    };
     Some(rgb(value))
+}
+
+fn parse_color(text: &str) -> [f32; 3] {
+    if let Some((name, components)) = color_function(text) {
+        return parse_color_function(name, components).unwrap_or([1.0, 1.0, 1.0]);
+    }
+    if let Some(body) = text.strip_prefix('#') {
+        if !body.is_empty() && body.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            if body.len() == 3 {
+                let r = u8::from_str_radix(&body[0..1], 16).unwrap() as f32 / 15.0;
+                let g = u8::from_str_radix(&body[1..2], 16).unwrap() as f32 / 15.0;
+                let b = u8::from_str_radix(&body[2..3], 16).unwrap() as f32 / 15.0;
+                return [r.min(1.0), g.min(1.0), b.min(1.0)];
+            }
+            if body.len() == 6 {
+                let value = u32::from_str_radix(body, 16).unwrap();
+                return rgb(value);
+            }
+        }
+        return [1.0, 1.0, 1.0];
+    }
+    if !text.is_empty() {
+        if let Some(value) = css_color_name(&text.to_ascii_lowercase()) {
+            return value;
+        }
+    }
+    [1.0, 1.0, 1.0]
 }
 
 fn rot_euler_xyz(rot: [f32; 3]) -> [[f32; 3]; 3] {
@@ -961,10 +1321,46 @@ fn build_drones(panel: &ViewportPanel, g: &mut SceneGeom, state: &AppState, fram
                 ],
             }
         };
-        let body = led_rgb(&point.led)
-            .map(|c| [c[0], c[1], c[2], 1.0])
-            .unwrap_or(rgba(0x2d5aa0, 1.0));
-        emit_box(g, &base, [0.28, 0.035, 0.28], body, false);
+        emit_box(g, &base, [0.28, 0.035, 0.28], rgba(0x2d5aa0, 1.0), false);
+        let led_c = led_rgb(&point.led).unwrap_or([0.0, 0.0, 0.0]);
+        let led_color = [led_c[0], led_c[1], led_c[2], 1.0];
+        for (lx, lz) in [
+            (-0.06f32, -0.145f32),
+            (0.06, -0.145),
+            (-0.06, 0.145),
+            (0.06, 0.145),
+        ] {
+            emit_box(
+                g,
+                &at([lx, 0.01, lz], &ident),
+                [0.03, 0.008, 0.015],
+                led_color,
+                false,
+            );
+        }
+        for (lx, lz) in [(-0.145f32, 0.0f32), (0.145, 0.0)] {
+            emit_box(
+                g,
+                &at([lx, 0.01, lz], &ident),
+                [0.015, 0.008, 0.03],
+                led_color,
+                false,
+            );
+        }
+        for (lx, lz) in [
+            (-0.08f32, -0.08f32),
+            (0.08, -0.08),
+            (-0.08, 0.08),
+            (0.08, 0.08),
+        ] {
+            emit_box(
+                g,
+                &at([lx, -0.038, lz], &ident),
+                [0.02, 0.006, 0.02],
+                led_color,
+                false,
+            );
+        }
         emit_box(
             g,
             &at([0.0, 0.015, -0.17], &ident),
@@ -1000,7 +1396,7 @@ fn drone_color(state: &AppState, id: &str) -> [f32; 3] {
         .drones
         .iter()
         .find(|drone| drone.id == id)
-        .and_then(|drone| hex_color(&drone.color))
+        .map(|drone| parse_color(&drone.color))
         .unwrap_or(rgb(0x00d4ff))
 }
 
@@ -1068,7 +1464,7 @@ fn build_obstacles(g: &mut SceneGeom, state: &AppState) {
         let base = obstacle
             .color
             .as_deref()
-            .and_then(hex_color)
+            .map(parse_color)
             .unwrap_or_else(|| obstacle_type_color(&obstacle.obstacle_type));
         let color = [base[0], base[1], base[2], 1.0];
         let xf = Xform {
@@ -1255,5 +1651,39 @@ fn vnorm(v: [f32; 3]) -> [f32; 3] {
         [v[0] / len, v[1] / len, v[2] / len]
     } else {
         [0.0, 0.0, 0.0]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn color_u8(color: [f32; 3]) -> [u8; 3] {
+        [
+            (color[0] * 255.0).round() as u8,
+            (color[1] * 255.0).round() as u8,
+            (color[2] * 255.0).round() as u8,
+        ]
+    }
+
+    #[test]
+    fn parse_color_matches_style_rules() {
+        assert_eq!(color_u8(parse_color("#4a9c68")), [0x4a, 0x9c, 0x68]);
+        assert_eq!(color_u8(parse_color("#abc")), [0xaa, 0xbb, 0xcc]);
+        assert_eq!(color_u8(parse_color("#A1B2C3")), [0xa1, 0xb2, 0xc3]);
+        assert_eq!(color_u8(parse_color("#aabbccdd")), [255, 255, 255]);
+        assert_eq!(color_u8(parse_color("4a9c68")), [255, 255, 255]);
+        assert_eq!(color_u8(parse_color("0x4a9c68")), [255, 255, 255]);
+        assert_eq!(color_u8(parse_color("red")), [255, 0, 0]);
+        assert_eq!(color_u8(parse_color("rebeccapurple")), [0x66, 0x33, 0x99]);
+        assert_eq!(color_u8(parse_color("aliceblue")), [0xf0, 0xf8, 0xff]);
+        assert_eq!(color_u8(parse_color("rgb(74,156,104)")), [74, 156, 104]);
+        assert_eq!(color_u8(parse_color("rgba(74,156,104,0.5)")), [74, 156, 104]);
+        assert_eq!(color_u8(parse_color("rgb(100%,0%,0%)")), [255, 0, 0]);
+        assert_eq!(color_u8(parse_color("hsl(0,100%,50%)")), [255, 0, 0]);
+        assert_eq!(color_u8(parse_color("hsl(240,100%,50%)")), [0, 0, 255]);
+        assert_eq!(color_u8(parse_color("transparent")), [255, 255, 255]);
+        assert_eq!(color_u8(parse_color("not-a-color")), [255, 255, 255]);
+        assert_eq!(color_u8(parse_color("")), [255, 255, 255]);
     }
 }

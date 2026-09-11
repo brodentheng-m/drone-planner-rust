@@ -3,6 +3,14 @@ mod ui;
 
 use state::AppState;
 
+fn file_base(name: &str, fallback: &str) -> String {
+    if name.is_empty() {
+        fallback.to_string()
+    } else {
+        name.to_string()
+    }
+}
+
 fn main() {
     if std::env::var("DP_SMOKE").as_deref() == Ok("1") {
         println!("planner-app smoke ok");
@@ -38,7 +46,6 @@ struct DronePlannerApp {
     root: ui::UiRoot,
     renaming: bool,
     rename_focus_pending: bool,
-    layout_defaults_applied: bool,
 }
 
 impl DronePlannerApp {
@@ -48,17 +55,6 @@ impl DronePlannerApp {
             root: ui::UiRoot::new(),
             renaming: false,
             rename_focus_pending: false,
-            layout_defaults_applied: false,
-        }
-    }
-
-    fn apply_layout_defaults(&mut self, ui: &egui::Ui) {
-        if self.layout_defaults_applied {
-            return;
-        }
-        self.layout_defaults_applied = true;
-        if ui.available_width() < 1400.0 {
-            self.state.show_right = false;
         }
     }
 
@@ -77,7 +73,10 @@ impl DronePlannerApp {
         state.log("Saving flight plan...");
         let path = rfd::FileDialog::new()
             .add_filter("Flight plan", &["flight"])
-            .set_file_name(&format!("{}.flight", state.plan.name))
+            .set_file_name(format!(
+                "{}.flight",
+                file_base(&state.plan.name, "flight")
+            ))
             .save_file();
         let Some(path) = path else { return };
         let text = state.export_plan_json();
@@ -163,7 +162,8 @@ impl DronePlannerApp {
 
     fn export_swarm(state: &mut AppState) {
         let code = planner_core::codegen::generate_swarm_code(&state.plan);
-        Self::export_code_dialog(state, &format!("{}.py", state.plan.name), code);
+        let name = format!("{}.py", file_base(&state.plan.name, "flight"));
+        Self::export_code_dialog(state, &name, code);
     }
 
     fn export_single(state: &mut AppState) {
@@ -173,10 +173,13 @@ impl DronePlannerApp {
         let Some(drone) = state.plan.drones.get(index) else {
             return;
         };
+        let drone_id = drone.id.clone();
+        let drone_name = drone.name.clone();
         let mut plan = state.plan.clone();
-        plan.active_drone_id = Some(drone.id.clone());
+        plan.active_drone_id = Some(drone_id);
         let code = planner_core::codegen::generate_code(&plan);
-        Self::export_code_dialog(state, &format!("{}.py", drone.name), code);
+        let name = format!("{}.py", file_base(&drone_name, "drone"));
+        Self::export_code_dialog(state, &name, code);
     }
 
     fn export_animation(state: &mut AppState) {
@@ -185,7 +188,8 @@ impl DronePlannerApp {
             plan.active_drone_id = Some(plan.drones[index].id.clone());
         }
         let code = planner_core::codegen::generate_animation_code(&plan);
-        Self::export_code_dialog(state, &format!("{}_sim.py", state.plan.name), code);
+        let name = format!("{}_sim.py", file_base(&state.plan.name, "flight"));
+        Self::export_code_dialog(state, &name, code);
     }
 
     fn export_code_dialog(state: &mut AppState, file_name: &str, code: String) {
@@ -202,7 +206,6 @@ impl DronePlannerApp {
 
 impl eframe::App for DronePlannerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.apply_layout_defaults(ui);
         self.state.begin_frame();
         self.state.sync_camera_mode();
         if self.state.playback.playing {
@@ -219,7 +222,17 @@ impl eframe::App for DronePlannerApp {
                 ui.horizontal(|ui| {
                     ui.add_space(4.0);
                     if ui.button("New").clicked() {
-                        Self::new_plan(&mut self.state);
+                        let confirmed = rfd::MessageDialog::new()
+                            .set_title("Drone Planner")
+                            .set_description(
+                                "Start a new flight plan? Unsaved changes will be lost.",
+                            )
+                            .set_buttons(rfd::MessageButtons::YesNo)
+                            .show()
+                            == rfd::MessageDialogResult::Yes;
+                        if confirmed {
+                            Self::new_plan(&mut self.state);
+                        }
                     }
                     if ui.button("Save").clicked() {
                         Self::save_plan_dialog(&mut self.state);

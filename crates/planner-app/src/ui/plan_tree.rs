@@ -186,6 +186,7 @@ pub struct PlanTreePanel {
     renaming: Option<(String, String)>,
     palette_filter: String,
     telemetry: TelemetryPanel,
+    last_selection: Vec<usize>,
 }
 
 impl Default for PlanTreePanel {
@@ -194,6 +195,7 @@ impl Default for PlanTreePanel {
             renaming: None,
             palette_filter: String::new(),
             telemetry: TelemetryPanel::new(),
+            last_selection: Vec::new(),
         }
     }
 }
@@ -262,12 +264,25 @@ fn capitalize(text: &str) -> String {
 }
 
 fn params_summary(command: &Command) -> String {
-    command
-        .params
+    let mut parts: Vec<String> = Vec::new();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    if let Some(def) = command_defs()
         .iter()
-        .map(|(key, value)| format!("{key}={}", interp(value)))
-        .collect::<Vec<String>>()
-        .join(", ")
+        .find(|def| def.command_type == command.command_type)
+    {
+        for param in def.params {
+            if let Some(value) = command.params.get(param.key) {
+                parts.push(format!("{}={}", param.key, interp(value)));
+                seen.insert(param.key);
+            }
+        }
+    }
+    for (key, value) in &command.params {
+        if !seen.contains(key.as_str()) {
+            parts.push(format!("{key}={}", interp(value)));
+        }
+    }
+    parts.join(", ")
 }
 
 impl PlanTreePanel {
@@ -313,7 +328,6 @@ impl PlanTreePanel {
                         if tab.clicked() {
                             state.plan.active_drone_id = Some(id.clone());
                             state.selection.command_path.clear();
-                            state.mark_dirty();
                             state.refresh_sim();
                         }
                         if tab.double_clicked() {
@@ -387,7 +401,13 @@ impl PlanTreePanel {
             .map(|drone| drone.commands.clone())
             .unwrap_or_default();
         let selection = state.selection.command_path.clone();
-        render_commands(ui, state, &commands, &selection, &[], 0);
+        let scroll = if selection != self.last_selection {
+            self.last_selection = selection.clone();
+            !selection.is_empty()
+        } else {
+            false
+        };
+        render_commands(ui, state, &commands, &selection, &[], 0, scroll);
     }
 
     fn palette_section(&mut self, ui: &mut Ui, state: &mut AppState) {
@@ -417,19 +437,14 @@ impl PlanTreePanel {
             }
             ui.label(RichText::new(*name).strong());
             let tint = category_color(*category);
-            egui::Grid::new(format!("palette_grid_{name}"))
-                .num_columns(2)
-                .spacing(egui::vec2(6.0, 4.0))
-                .show(ui, |ui| {
-                    for (command_type, label) in &visible {
-                        let button = egui::Button::new(RichText::new(*label).color(tint))
-                            .fill(tint.gamma_multiply(0.18))
-                            .min_size(egui::vec2(96.0, 22.0));
-                        if ui.add(button).clicked() {
-                            state.add_command(*command_type);
-                        }
-                    }
-                });
+            for (command_type, label) in &visible {
+                let button = egui::Button::new(RichText::new(*label).color(tint))
+                    .fill(tint.gamma_multiply(0.18))
+                    .min_size(egui::vec2(f32::INFINITY, 22.0));
+                if ui.add(button).clicked() {
+                    state.add_command(*command_type);
+                }
+            }
             ui.add_space(6.0);
         }
         self.command_options(ui, state);
@@ -476,6 +491,7 @@ fn render_commands(
     selection: &[usize],
     parent_path: &[usize],
     depth: usize,
+    scroll: bool,
 ) {
     for (index, command) in commands.iter().enumerate() {
         let mut path = parent_path.to_vec();
@@ -492,7 +508,9 @@ fn render_commands(
             let parents: Vec<String> = parent_path.iter().map(|item| item.to_string()).collect();
             format!("{}.{}", parents.join("."), index)
         };
-        draw_row(ui, state, command, label, &number, &path, is_selected, index, commands.len());
+        draw_row(
+            ui, state, command, label, &number, &path, is_selected, index, commands.len(), scroll,
+        );
         if is_selected {
             ui.push_id(format!("editor_{path:?}"), |ui| {
                 draw_param_editors(ui, state, command.command_type, &command.params);
@@ -500,7 +518,7 @@ fn render_commands(
         }
         if command.command_type.is_block() {
             ui.indent(format!("children_{path:?}"), |ui| {
-                render_commands(ui, state, &command.children, selection, &path, depth + 1);
+                render_commands(ui, state, &command.children, selection, &path, depth + 1, scroll);
                 if ui.button("+ Add").clicked() {
                     state.selection.command_path = path.clone();
                     state.log(format!("Palette picks now add inside {label}"));
@@ -520,12 +538,13 @@ fn draw_row(
     is_selected: bool,
     index: usize,
     count: usize,
+    scroll: bool,
 ) {
     let mut frame = egui::Frame::NONE.inner_margin(egui::Margin::symmetric(4, 2));
     if is_selected {
         frame = frame.fill(Color32::from_rgba_unmultiplied(0x58, 0xa6, 0xff, 38));
     }
-    frame.show(ui, |ui| {
+    let response = frame.show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
             let num = ui.add(
@@ -577,6 +596,9 @@ fn draw_row(
             });
         });
     });
+    if is_selected && scroll {
+        response.response.scroll_to_me(None);
+    }
 }
 
 fn collect_command_ids(commands: &[Command], out: &mut BTreeSet<String>) {
