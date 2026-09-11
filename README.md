@@ -59,13 +59,43 @@ RUSTFLAGS="-C target-feature=+crt-static" cargo xwin build --release --target x8
 
 The exact command and import-table verification are recorded in BUILD_LOG.md.
 
-## Run on Windows (no admin)
+## Install on Windows (no admin, no experience needed)
 
-- Copy `drone-planner.exe` (from `target/x86_64-pc-windows-msvc/release/`) anywhere writable: Downloads, Desktop, or a USB stick.
-- Double-click it. A window titled "Drone Planner" opens.
-- If nothing opens or you get a GL error: drop a mesa llvmpipe `opengl32.dll` next to the exe (software rendering), then start again.
-- No admin, no installer, no registry, no network use.
-- The app starts writing nothing to disk. Plans, obstacle files, and Python exports go wherever you save them in the file dialogs (default extension `.flight` for plans; JSON/GeoJSON/CSV/OBJ for obstacles).
+1. Go to the releases page: https://github.com/brodentheng-m/drone-planner-rust/releases
+2. Under the newest release, click `drone-planner.exe` to download it.
+3. Find the file in your Downloads folder. You can leave it there, or drag it to your Desktop.
+4. Double-click `drone-planner.exe`.
+5. A window titled "Drone Planner" opens. That's the whole installation - there isn't one.
+
+Notes:
+- Windows may show a blue "Windows protected your PC" box. This appears because the
+  app is not code-signed (signing certificates cost money). Click "More info", then
+  "Run anyway".
+- If the window opens but the 3D view is black or you get an OpenGL error, the
+  laptop's graphics driver is too old. Download this file:
+  https://github.com/pal1000/mesa-dist-win/releases - pick `mesa-for-...-release-msvc.7z`,
+  open it, and copy `x64\opengl32.dll` into the same folder as `drone-planner.exe`.
+  That adds software rendering; the app then works on any graphics hardware.
+- Nothing is installed, nothing runs at startup, no network access. Deleting the
+  exe removes the app completely. Plans you save and Python files you export go
+  wherever you pick in the save dialog (plans use the `.flight` extension).
+
+## Build from source (Linux, macOS, or Windows)
+
+Requires Rust: install from https://rustup.rs (one command, user-level, no admin).
+
+```
+git clone https://github.com/brodentheng-m/drone-planner-rust
+cd drone-planner-rust
+cargo run -p planner-app            # run with window
+cargo test --workspace              # run the test suite
+```
+
+The Windows release exe is cross-compiled from Linux; the exact command and
+import-table verification are recorded in BUILD_LOG.md.
+
+On macOS, run the same three commands - the app builds and runs natively with no
+extra steps. (M-series and Intel Macs are both supported by Rust automatically.)
 
 ## Fixture parity
 
