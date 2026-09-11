@@ -94,8 +94,22 @@ cargo test --workspace              # run the test suite
 The Windows release exe is cross-compiled from Linux; the exact command and
 import-table verification are recorded in BUILD_LOG.md.
 
-On macOS, run the same three commands - the app builds and runs natively with no
-extra steps. (M-series and Intel Macs are both supported by Rust automatically.)
+On macOS there is no prebuilt download - the app builds itself in about two
+minutes. Open Terminal (press Cmd+Space, type "Terminal", press Enter), then
+paste this whole block at once and press Enter:
+
+```
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+git clone https://github.com/brodentheng-m/drone-planner-rust
+cd drone-planner-rust
+cargo run -p planner-app
+```
+
+The first paste installs Rust, the rest downloads the source and opens the app.
+Every launch after the first: open Terminal, type `cd drone-planner-rust`, press
+Enter, type `cargo run -p planner-app`, press Enter. M-series and Intel Macs are
+both supported automatically.
 
 ## Fixture parity
 
