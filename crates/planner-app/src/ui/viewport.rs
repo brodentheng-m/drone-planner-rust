@@ -1188,6 +1188,51 @@ fn emit_box(g: &mut SceneGeom, xf: &Xform, dims: [f32; 3], color: [f32; 4], edge
     }
 }
 
+fn emit_cylinder(g: &mut SceneGeom, xf: &Xform, radius: f32, height: f32, color: [f32; 4]) {
+    const SEG: usize = 12;
+    let half = height / 2.0;
+    let top = xf.apply([0.0, half, 0.0]);
+    let bottom = xf.apply([0.0, -half, 0.0]);
+    for i in 0..SEG {
+        let a0 = i as f32 / SEG as f32 * std::f32::consts::TAU;
+        let a1 = (i + 1) as f32 / SEG as f32 * std::f32::consts::TAU;
+        let b0 = xf.apply([radius * a0.cos(), -half, radius * a0.sin()]);
+        let b1 = xf.apply([radius * a1.cos(), -half, radius * a1.sin()]);
+        let t0 = xf.apply([radius * a0.cos(), half, radius * a0.sin()]);
+        let t1 = xf.apply([radius * a1.cos(), half, radius * a1.sin()]);
+        push_tri(g, b0, b1, t1, color);
+        push_tri(g, b0, t1, t0, color);
+        push_tri(g, top, t0, t1, color);
+        push_tri(g, bottom, b1, b0, color);
+    }
+}
+
+fn emit_duct_ring(g: &mut SceneGeom, xf: &Xform, radius: f32, height: f32, color: [f32; 4]) {
+    const SEG: usize = 16;
+    let half = height / 2.0;
+    let inner = radius * 0.84;
+    for i in 0..SEG {
+        let a0 = i as f32 / SEG as f32 * std::f32::consts::TAU;
+        let a1 = (i + 1) as f32 / SEG as f32 * std::f32::consts::TAU;
+        let ot0 = xf.apply([radius * a0.cos(), half, radius * a0.sin()]);
+        let ot1 = xf.apply([radius * a1.cos(), half, radius * a1.sin()]);
+        let ob0 = xf.apply([radius * a0.cos(), -half, radius * a0.sin()]);
+        let ob1 = xf.apply([radius * a1.cos(), -half, radius * a1.sin()]);
+        let it0 = xf.apply([inner * a0.cos(), half, inner * a0.sin()]);
+        let it1 = xf.apply([inner * a1.cos(), half, inner * a1.sin()]);
+        let ib0 = xf.apply([inner * a0.cos(), -half, inner * a0.sin()]);
+        let ib1 = xf.apply([inner * a1.cos(), -half, inner * a1.sin()]);
+        push_tri(g, ob0, ob1, ot1, color);
+        push_tri(g, ob0, ot1, ot0, color);
+        push_tri(g, ib0, ib1, it1, color);
+        push_tri(g, ib0, it1, it0, color);
+        push_tri(g, ot0, ot1, it1, color);
+        push_tri(g, ot0, it1, it0, color);
+        push_tri(g, ob0, ob1, ib1, color);
+        push_tri(g, ob0, ib1, ib0, color);
+    }
+}
+
 fn build_boundary(g: &mut SceneGeom, state: &AppState) {
     let b = &state.obstacles.boundary;
     let (x0, x1) = (b.min_x as f32, b.max_x as f32);
@@ -1321,31 +1366,106 @@ fn build_drones(panel: &ViewportPanel, g: &mut SceneGeom, state: &AppState, fram
                 ],
             }
         };
-        emit_box(g, &base, [0.28, 0.035, 0.28], rgba(0x2d5aa0, 1.0), false);
-        let led_c = led_rgb(&point.led).unwrap_or([0.0, 0.0, 0.0]);
-        let led_color = [led_c[0], led_c[1], led_c[2], 1.0];
-        for (lx, lz) in [
-            (-0.06f32, -0.145f32),
-            (0.06, -0.145),
-            (-0.06, 0.145),
-            (0.06, 0.145),
-        ] {
-            emit_box(
-                g,
-                &at([lx, 0.01, lz], &ident),
-                [0.03, 0.008, 0.015],
-                led_color,
-                false,
-            );
+        let tint = [color[0], color[1], color[2], 1.0];
+        emit_box(g, &at([0.0, 0.0, 0.0], &ident), [0.26, 0.028, 0.26], rgba(0x1a212d, 1.0), false);
+        emit_box(g, &at([0.0, 0.024, 0.0], &ident), [0.22, 0.026, 0.22], rgba(0x2d3748, 1.0), false);
+        emit_box(g, &at([0.0, 0.040, 0.0], &ident), [0.17, 0.010, 0.17], tint, false);
+        emit_box(g, &at([0.0, 0.052, 0.010], &ident), [0.12, 0.018, 0.08], rgba(0x161b22, 1.0), false);
+        emit_box(g, &at([0.0, 0.062, 0.010], &ident), [0.07, 0.003, 0.025], rgba(0x3fb950, 1.0), false);
+        emit_box(g, &at([0.0, 0.056, -0.038], &ident), [0.026, 0.008, 0.012], rgba(0x8b949e, 1.0), false);
+        emit_box(g, &at([0.0, 0.020, -0.155], &ident), [0.05, 0.015, 0.04], tint, false);
+        emit_box(g, &at([0.0, -0.004, -0.138], &ident), [0.06, 0.020, 0.014], rgba(0x1a212d, 1.0), false);
+        for lx in [-0.016f32, 0.016] {
+            emit_box(g, &at([lx, -0.004, -0.146], &ident), [0.011, 0.011, 0.006], rgba(0x1f6feb, 1.0), false);
         }
-        for (lx, lz) in [(-0.145f32, 0.0f32), (0.145, 0.0)] {
-            emit_box(
-                g,
-                &at([lx, 0.01, lz], &ident),
-                [0.015, 0.008, 0.03],
-                led_color,
-                false,
-            );
+        emit_box(g, &at([0.0, 0.014, -0.138], &ident), [0.036, 0.020, 0.016], rgba(0x21262d, 1.0), false);
+        emit_box(g, &at([0.0, 0.014, -0.147], &ident), [0.014, 0.014, 0.004], rgba(0x0d1117, 1.0), false);
+        emit_box(g, &at([0.0, -0.022, -0.035], &ident), [0.04, 0.012, 0.03], rgba(0x21262d, 1.0), false);
+        emit_box(g, &at([0.0, -0.022, 0.035], &ident), [0.036, 0.012, 0.036], rgba(0x21262d, 1.0), false);
+        for (sx, sz) in [(1.0f32, 1.0f32), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
+            let diag = -(sz.atan2(sx));
+            let arm = rot_yxz(diag, 0.0, 0.0);
+            emit_box(g, &at([0.15 * sx, 0.006, 0.15 * sz], &arm), [0.20, 0.018, 0.024], rgba(0x30363d, 1.0), false);
+            emit_box(g, &at([0.12 * sx, -0.008, 0.12 * sz], &ident), [0.10, 0.010, 0.016], rgba(0x21262d, 1.0), false);
+            emit_cylinder(g, &at([0.28 * sx, 0.016, 0.28 * sz], &ident), 0.044, 0.032, rgba(0x484f58, 1.0));
+            emit_cylinder(g, &at([0.28 * sx, 0.034, 0.28 * sz], &ident), 0.032, 0.008, rgba(0x30363d, 1.0));
+            emit_cylinder(g, &at([0.28 * sx, 0.044, 0.28 * sz], &ident), 0.014, 0.012, rgba(0x8b949e, 1.0));
+            emit_duct_ring(g, &at([0.28 * sx, 0.040, 0.28 * sz], &ident), 0.138, 0.022, rgba(0x484f58, 0.85));
+            for k in 0..4 {
+                let a = k as f32 / 4.0 * std::f32::consts::TAU;
+                let spoke = rot_yxz(a, 0.0, 0.0);
+                emit_box(
+                    g,
+                    &at(
+                        [
+                            0.28 * sx + 0.091 * a.cos(),
+                            0.036,
+                            0.28 * sz + 0.091 * a.sin(),
+                        ],
+                        &spoke,
+                    ),
+                    [0.094, 0.008, 0.010],
+                    rgba(0x484f58, 1.0),
+                    false,
+                );
+            }
+            emit_cylinder(g, &at([0.26 * sx, -0.022, 0.26 * sz], &ident), 0.008, 0.028, rgba(0x161b22, 1.0));
+            emit_box(g, &at([0.26 * sx, -0.038, 0.26 * sz], &ident), [0.034, 0.006, 0.016], rgba(0x161b22, 1.0), false);
+            let spin_dir = if sx * sz > 0.0 { 1.0 } else { -1.0 };
+            let tip = if spin_dir > 0.0 {
+                [0.9, 1.0, 0.9, 1.0]
+            } else {
+                [1.0, 0.45, 0.2, 1.0]
+            };
+            for b in 0..2 {
+                let a = panel.spin * spin_dir + b as f32 * std::f32::consts::PI;
+                let blade = rot_yxz(a, 0.0, 0.0);
+                emit_box(
+                    g,
+                    &at(
+                        [
+                            0.28 * sx + 0.055 * a.cos(),
+                            0.046,
+                            0.28 * sz + 0.055 * a.sin(),
+                        ],
+                        &blade,
+                    ),
+                    [0.10, 0.002, 0.016],
+                    rgba(0x8b949e, 0.7),
+                    false,
+                );
+                emit_box(
+                    g,
+                    &at(
+                        [
+                            0.28 * sx + 0.104 * a.cos(),
+                            0.047,
+                            0.28 * sz + 0.104 * a.sin(),
+                        ],
+                        &blade,
+                    ),
+                    [0.014, 0.003, 0.016],
+                    tip,
+                    false,
+                );
+            }
+        }
+        emit_box(g, &at([0.0, 0.040, -0.418], &ident), [0.28, 0.012, 0.012], rgba(0x30363d, 1.0), false);
+        emit_box(g, &at([0.0, 0.040, 0.418], &ident), [0.28, 0.012, 0.012], rgba(0x30363d, 1.0), false);
+        emit_box(g, &at([-0.418, 0.040, 0.0], &ident), [0.012, 0.012, 0.28], rgba(0x30363d, 1.0), false);
+        emit_box(g, &at([0.418, 0.040, 0.0], &ident), [0.012, 0.012, 0.28], rgba(0x30363d, 1.0), false);
+        let led = led_rgb(&point.led);
+        let front_c = led.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or([0.9, 1.0, 0.9, 1.0]);
+        let rear_c = led.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or([1.0, 0.2, 0.2, 1.0]);
+        let side_c = led.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or([0.2, 0.8, 1.0, 1.0]);
+        let glow_c = led.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or(tint);
+        for lx in [-0.09f32, 0.09] {
+            emit_box(g, &at([lx, 0.006, -0.128], &ident), [0.03, 0.008, 0.012], front_c, false);
+            emit_box(g, &at([lx, 0.006, 0.128], &ident), [0.03, 0.008, 0.012], rear_c, false);
+        }
+        for lz in [-0.075f32, 0.075] {
+            emit_box(g, &at([-0.128, 0.006, lz], &ident), [0.012, 0.008, 0.03], side_c, false);
+            emit_box(g, &at([0.128, 0.006, lz], &ident), [0.012, 0.008, 0.03], side_c, false);
         }
         for (lx, lz) in [
             (-0.08f32, -0.08f32),
@@ -1353,39 +1473,7 @@ fn build_drones(panel: &ViewportPanel, g: &mut SceneGeom, state: &AppState, fram
             (-0.08, 0.08),
             (0.08, 0.08),
         ] {
-            emit_box(
-                g,
-                &at([lx, -0.038, lz], &ident),
-                [0.02, 0.006, 0.02],
-                led_color,
-                false,
-            );
-        }
-        emit_box(
-            g,
-            &at([0.0, 0.015, -0.17], &ident),
-            [0.06, 0.02, 0.04],
-            [color[0], color[1], color[2], 1.0],
-            false,
-        );
-        for (sx, sz) in [(1.0f32, 1.0f32), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
-            emit_box(
-                g,
-                &at([0.18 * sx, 0.0, 0.18 * sz], &ident),
-                [0.2, 0.022, 0.032],
-                rgba(0x555555, 1.0),
-                false,
-            );
-            for b in 0..2 {
-                let blade = rot_yxz(panel.spin + b as f32 * std::f32::consts::FRAC_PI_2, 0.0, 0.0);
-                emit_box(
-                    g,
-                    &at([0.28 * sx, 0.058, 0.28 * sz], &blade),
-                    [0.22, 0.002, 0.018],
-                    rgba(0x888888, 0.45),
-                    false,
-                );
-            }
+            emit_box(g, &at([lx, -0.018, lz], &ident), [0.02, 0.006, 0.02], glow_c, false);
         }
     }
 }
