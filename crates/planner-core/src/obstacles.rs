@@ -219,6 +219,15 @@ pub struct Obstacle {
     pub color: Option<String>,
 }
 
+impl Obstacle {
+    pub fn is_pad(&self) -> bool {
+        let name = self.name.to_ascii_lowercase();
+        let id = self.id.to_ascii_lowercase();
+        let ty = self.obstacle_type.to_ascii_lowercase();
+        name.contains("pad") || id.contains("pad") || ty.contains("pad") || name.contains("mat") || id.contains("mat")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CollisionHit {
     pub obstacle: Obstacle,
@@ -304,7 +313,7 @@ impl ObstacleSet {
         let half = drone_size / 2.0;
         let probe = [sim_x, sim_z, sim_y];
         'obstacles: for obstacle in &self.obstacles {
-            if type_dims(&obstacle.obstacle_type).is_none() {
+            if type_dims(&obstacle.obstacle_type).is_none() || obstacle.is_pad() {
                 continue;
             }
             let world_box = self.world_box(obstacle);

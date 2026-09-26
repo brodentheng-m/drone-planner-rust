@@ -1004,17 +1004,23 @@ fn parse_drone_call(line: &str) -> Option<Command> {
             ))
         }
         "move_forward" | "move_backward" | "move_left" | "move_right" => {
-            let (dist, tail) = take_uint(args)?;
+            let (dist_str, tail) = take_float_class(args)?;
+            let dist = dist_str.parse::<f64>().ok()?;
             let tail = skip_ws(tail);
             let speed = match tail.strip_prefix(',') {
                 Some(rest) => {
                     let rest = skip_ws(rest);
-                    let rest = rest.strip_prefix("speed=")?;
-                    let (speed, rest) = take_uint(rest)?;
+                    let rest = rest.strip_prefix("speed=").unwrap_or(rest);
+                    let (speed_str, rest) = take_float_class(rest)?;
                     if !skip_ws(rest).starts_with(')') {
                         return None;
                     }
-                    speed
+                    let speed_val = speed_str.parse::<f64>().ok()?;
+                    if speed_val <= 2.0 && speed_val > 0.0 {
+                        speed_val * 50.0
+                    } else {
+                        speed_val
+                    }
                 }
                 None => {
                     if !tail.starts_with(')') {

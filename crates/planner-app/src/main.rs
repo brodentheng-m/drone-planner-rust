@@ -50,8 +50,40 @@ struct DronePlannerApp {
 
 impl DronePlannerApp {
     fn new() -> DronePlannerApp {
+        let mut state = AppState::new();
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        for arg in args {
+            let path = std::path::Path::new(&arg);
+            if !path.exists() {
+                continue;
+            }
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if ext == "py" {
+                if let Ok(text) = std::fs::read_to_string(path) {
+                    let _ = state.import_code(&text);
+                }
+            } else if ext == "flight" {
+                if let Ok(text) = std::fs::read_to_string(path) {
+                    let _ = state.import_plan_json(&text);
+                }
+            } else if ext == "json" {
+                if let Ok(text) = std::fs::read_to_string(path) {
+                    if text.contains("\"obstacles\"") {
+                        let filename = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                        let _ = state.import_obstacle_text(&text, &filename);
+                    } else if text.contains("\"drones\"") {
+                        let _ = state.import_plan_json(&text);
+                    }
+                }
+            } else if matches!(ext.as_str(), "geojson" | "csv" | "obj") {
+                if let Ok(text) = std::fs::read_to_string(path) {
+                    let filename = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    let _ = state.import_obstacle_text(&text, &filename);
+                }
+            }
+        }
         DronePlannerApp {
-            state: AppState::new(),
+            state,
             root: ui::UiRoot::new(),
             renaming: false,
             rename_focus_pending: false,

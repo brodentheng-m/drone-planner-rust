@@ -194,7 +194,9 @@ impl AppState {
     }
 
     fn push_line(&mut self, msg: String) {
-        self.console.push(format!("[{}] {msg}", timestamp_now()));
+        let entry = format!("[{}] {msg}", timestamp_now());
+        println!("{entry}");
+        self.console.push(entry);
         if self.console.len() > CONSOLE_CAP {
             let overflow = self.console.len() - CONSOLE_CAP;
             self.console.drain(..overflow);
@@ -242,13 +244,15 @@ impl AppState {
     }
 
     fn collision_obstacle_set(&self) -> ObstacleSet {
-        if self.obstacles_visible {
-            self.obstacles.clone()
+        let obstacles = if self.obstacles_visible {
+            &self.obstacles.obstacles
         } else {
-            ObstacleSet {
-                obstacles: self.stashed_obstacles.clone(),
-                boundary: self.obstacles.boundary,
-            }
+            &self.stashed_obstacles
+        };
+        let filtered = obstacles.iter().filter(|o| !o.is_pad()).cloned().collect();
+        ObstacleSet {
+            obstacles: filtered,
+            boundary: self.obstacles.boundary,
         }
     }
 
@@ -395,6 +399,15 @@ impl AppState {
             Some(&self.collision_obstacle_set()),
             Some(&mut on_start),
         );
+        for drone in &self.plan.drones {
+            if let Some(res) = self.sim_results.get_mut(&drone.id) {
+                if !res.positions.is_empty() {
+                    res.positions[0].x = drone.offset[0];
+                    res.positions[0].y = drone.offset[2];
+                    res.positions[0].z = drone.offset[1];
+                }
+            }
+        }
         self.route_map = route_map;
         self.active_drone_route = self
             .active_drone_index()
@@ -422,15 +435,30 @@ impl AppState {
         self.selection.drone_index = self.active_drone_index();
         self.collision_marks.clear();
         self.collision_points.clear();
+        let mut sim_collisions = 0;
+        let mut to_log = Vec::new();
         for (id, result) in &self.sim_results {
             for collision in &result.collisions {
+                sim_collisions += 1;
                 let key = (id.clone(), collision.obstacle.id.clone());
                 if !self.collision_marks.contains(&key) {
                     self.collision_marks.push(key);
                     self.collision_points
                         .push([collision.position.x, collision.position.y, collision.position.z]);
+                    to_log.push(format!(
+                        "COLLISION: {} hit {} ({})",
+                        id,
+                        collision.obstacle.obstacle_type,
+                        collision.obstacle.name
+                    ));
                 }
             }
+        }
+        for msg in to_log {
+            self.log_level("error", msg);
+        }
+        if sim_collisions == 0 {
+            self.log("Collision check: 0 collisions detected");
         }
         self.update_flight_status();
     }
@@ -953,3 +981,73 @@ fn timestamp_now() -> String {
         secs % 60
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drone_resting_position_matches_offset() {
+        let mut state = AppState::new();
+        state.plan.drones[0].offset = [-0.444, 0.0, -2.263];
+        state.refresh_sim();
+        let frame = state.current_frame().expect("frame available");
+        let drone_pos = frame.positions.get("d1").expect("drone position");
+        assert!((drone_pos.x - -0.444).abs() < 1e-6);
+        assert!((drone_pos.y - -2.263).abs() < 1e-6);
+        assert!((drone_pos.z - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn competition_course_collision_check() {
+        let mut state = AppState::new();
+        let plan_text = std::fs::read_to_string("/home/bradenz/Drone/competition-course.flight").unwrap();
+        state.import_plan_json(&plan_text).unwrap();
+        let obs_text = std::fs::read_to_string("/home/bradenz/Drone/competition-course-obstacles.json").unwrap();
+        state.import_obstacle_text(&obs_text, "competition-course-obstacles.json").unwrap();
+        state.refresh_sim();
+        assert_eq!(state.sim_results["d1"].collisions.len(), 0);
+        let last_pt = state.sim_results["d1"].positions.last().unwrap();
+        assert!((last_pt.x - 1.038).abs() < 0.1);
+        assert!((last_pt.y - 2.263).abs() < 0.1);
+        assert!(state.console.iter().any(|l| l.contains("Collision check: 0 collisions detected")));
+    }
+
+    #[test]
+    fn pad_does_not_cause_collision() {
+        let mut state = AppState::new();
+        state.obstacles.obstacles.push(planner_core::obstacles::Obstacle {
+            id: "pad_takeoff".to_string(),
+            obstacle_type: "sphere".to_string(),
+            position: [0.0, 0.0, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: [1.0, 1.0, 1.0],
+            name: "Takeoff Pad".to_string(),
+            color: None,
+        });
+        state.refresh_sim();
+        assert_eq!(state.sim_results["d1"].collisions.len(), 0);
+        assert!(!state.has_collision);
+    }
+
+    #[test]
+    fn obstacle_causes_collision_and_logs() {
+        let mut state = AppState::new();
+        state.obstacles.obstacles.clear();
+        state.obstacles.obstacles.push(planner_core::obstacles::Obstacle {
+            id: "obs_wall".to_string(),
+            obstacle_type: "wall".to_string(),
+            position: [0.5, 0.5, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: [1.0, 1.0, 1.0],
+            name: "Brick Wall".to_string(),
+            color: None,
+        });
+        state.import_code("drone.takeoff()\ndrone.go(\"forward\", 50, 2.0)\ndrone.land()\n").unwrap();
+        assert!(state.sim_results["d1"].collisions.len() > 0);
+        let log_found = state.console.iter().any(|line| line.contains("COLLISION: d1 hit wall (Brick Wall)"));
+        assert!(log_found);
+    }
+
+}
+

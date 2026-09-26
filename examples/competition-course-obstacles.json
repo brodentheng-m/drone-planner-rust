@@ -1,0 +1,1334 @@
+{
+  "obstacles": [
+    {
+      "id": "obs_0",
+      "type": "sphere",
+      "position": [
+        -0.444,
+        0.005,
+        -2.263
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.8,
+        0.015,
+        0.8
+      ],
+      "color": "#FFFFFF",
+      "name": "Station 1: Takeoff Pad (Rim)"
+    },
+    {
+      "id": "obs_1",
+      "type": "sphere",
+      "position": [
+        -0.444,
+        0.01,
+        -2.263
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.72,
+        0.018,
+        0.72
+      ],
+      "color": "#FF5722",
+      "name": "Station 1: Takeoff Pad (Orange)"
+    },
+    {
+      "id": "obs_2",
+      "type": "tower",
+      "position": [
+        -1.168,
+        0.3,
+        -0.344
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1167,
+        0.4,
+        0.1167
+      ],
+      "color": "#4A2E18",
+      "name": "Stool Leg (Back Left)"
+    },
+    {
+      "id": "obs_3",
+      "type": "tower",
+      "position": [
+        -0.908,
+        0.3,
+        -0.344
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1167,
+        0.4,
+        0.1167
+      ],
+      "color": "#4A2E18",
+      "name": "Stool Leg (Back Right)"
+    },
+    {
+      "id": "obs_4",
+      "type": "tower",
+      "position": [
+        -1.168,
+        0.3,
+        -0.084
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1167,
+        0.4,
+        0.1167
+      ],
+      "color": "#4A2E18",
+      "name": "Stool Leg (Front Left)"
+    },
+    {
+      "id": "obs_5",
+      "type": "tower",
+      "position": [
+        -0.908,
+        0.3,
+        -0.084
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1167,
+        0.4,
+        0.1167
+      ],
+      "color": "#4A2E18",
+      "name": "Stool Leg (Front Right)"
+    },
+    {
+      "id": "obs_6",
+      "type": "sphere",
+      "position": [
+        -1.038,
+        0.62,
+        -0.214
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.72,
+        0.08,
+        0.72
+      ],
+      "color": "#5C3A21",
+      "name": "Station 2: Brown Stool (Seat)"
+    },
+    {
+      "id": "obs_7",
+      "type": "wall",
+      "position": [
+        -1.038,
+        0.2,
+        -0.214
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.55,
+        0.02,
+        0.02
+      ],
+      "color": "#3D2314",
+      "name": "Stool Rung 1"
+    },
+    {
+      "id": "obs_8",
+      "type": "wall",
+      "position": [
+        -1.038,
+        0.2,
+        -0.214
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.02,
+        0.02,
+        0.14
+      ],
+      "color": "#3D2314",
+      "name": "Stool Rung 2"
+    },
+    {
+      "id": "obs_9",
+      "type": "tower",
+      "position": [
+        0.355,
+        0.355,
+        -0.105
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1333,
+        0.4733,
+        0.1333
+      ],
+      "color": "#374151",
+      "name": "Desk Leg (Back Left)"
+    },
+    {
+      "id": "obs_10",
+      "type": "tower",
+      "position": [
+        1.155,
+        0.355,
+        -0.105
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1333,
+        0.4733,
+        0.1333
+      ],
+      "color": "#374151",
+      "name": "Desk Leg (Back Right)"
+    },
+    {
+      "id": "obs_11",
+      "type": "tower",
+      "position": [
+        0.355,
+        0.355,
+        0.395
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1333,
+        0.4733,
+        0.1333
+      ],
+      "color": "#374151",
+      "name": "Desk Leg (Front Left)"
+    },
+    {
+      "id": "obs_12",
+      "type": "tower",
+      "position": [
+        1.155,
+        0.355,
+        0.395
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1333,
+        0.4733,
+        0.1333
+      ],
+      "color": "#374151",
+      "name": "Desk Leg (Front Right)"
+    },
+    {
+      "id": "obs_13",
+      "type": "wall",
+      "position": [
+        0.755,
+        0.725,
+        0.145
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1.84,
+        0.03,
+        0.31
+      ],
+      "color": "#E5B56A",
+      "name": "Station 3: Desk (Tabletop)"
+    },
+    {
+      "id": "obs_14",
+      "type": "wall",
+      "position": [
+        0.755,
+        0.65,
+        0.145
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1.564,
+        0.015,
+        0.2635
+      ],
+      "color": "#4B5563",
+      "name": "Desk Book Box"
+    },
+    {
+      "id": "obs_15",
+      "type": "wall",
+      "position": [
+        -0.181,
+        0.01,
+        1.348
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.48,
+        0.02,
+        0.12
+      ],
+      "color": "#1A1A1A",
+      "name": "Traffic Cone (Square Base)"
+    },
+    {
+      "id": "obs_16",
+      "type": "cone",
+      "position": [
+        -0.181,
+        0.18,
+        1.348
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.55,
+        0.8,
+        0.55
+      ],
+      "color": "#FF5722",
+      "name": "Traffic Cone (Body)"
+    },
+    {
+      "id": "obs_17",
+      "type": "hoop",
+      "position": [
+        -0.181,
+        0.212,
+        1.348
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.12,
+        0.04,
+        0.12
+      ],
+      "color": "#EEEEEE",
+      "name": "Traffic Cone (Reflective Band)"
+    },
+    {
+      "id": "obs_18",
+      "type": "sphere",
+      "position": [
+        -0.181,
+        0.3694,
+        1.348
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.168,
+        0.168,
+        0.168
+      ],
+      "color": "#8E24AA",
+      "name": "Station 4: Knock Ball (Purple)"
+    },
+    {
+      "id": "obs_19",
+      "type": "sphere",
+      "position": [
+        1.038,
+        0.005,
+        2.263
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.8,
+        0.015,
+        0.8
+      ],
+      "color": "#FFFFFF",
+      "name": "Station 5: Purple Pad (Rim)"
+    },
+    {
+      "id": "obs_20",
+      "type": "sphere",
+      "position": [
+        1.038,
+        0.01,
+        2.263
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.72,
+        0.018,
+        0.72
+      ],
+      "color": "#7E57C2",
+      "name": "Station 5: Purple Pad (Landing Zone)"
+    },
+    {
+      "id": "obs_21",
+      "type": "wall",
+      "position": [
+        -2.2,
+        0.74,
+        1.2
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        1.3,
+        0.03,
+        0.225
+      ],
+      "color": "#E5B56A",
+      "name": "Left Row 1 Tabletop"
+    },
+    {
+      "id": "obs_22",
+      "type": "tower",
+      "position": [
+        -2.45,
+        0.36,
+        1.05
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 1 Leg FL"
+    },
+    {
+      "id": "obs_23",
+      "type": "tower",
+      "position": [
+        -1.95,
+        0.36,
+        1.05
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 1 Leg FR"
+    },
+    {
+      "id": "obs_24",
+      "type": "wall",
+      "position": [
+        -2.2,
+        0.44,
+        1.52
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.84,
+        0.04,
+        0.19
+      ],
+      "color": "#1E3A8A",
+      "name": "Left Row 1 Chair Seat"
+    },
+    {
+      "id": "obs_25",
+      "type": "wall",
+      "position": [
+        -2.2,
+        0.65,
+        1.68
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.76,
+        0.25,
+        0.015
+      ],
+      "color": "#1E3A8A",
+      "name": "Left Row 1 Chair Back"
+    },
+    {
+      "id": "obs_26",
+      "type": "tower",
+      "position": [
+        -2.38,
+        0.22,
+        1.66
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 1 Chair Leg L"
+    },
+    {
+      "id": "obs_27",
+      "type": "tower",
+      "position": [
+        -2.02,
+        0.22,
+        1.66
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 1 Chair Leg R"
+    },
+    {
+      "id": "obs_28",
+      "type": "wall",
+      "position": [
+        -2.2,
+        0.74,
+        -0.4
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        1.3,
+        0.03,
+        0.225
+      ],
+      "color": "#E5B56A",
+      "name": "Left Row 2 Tabletop"
+    },
+    {
+      "id": "obs_29",
+      "type": "tower",
+      "position": [
+        -2.45,
+        0.36,
+        -0.55
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 2 Leg FL"
+    },
+    {
+      "id": "obs_30",
+      "type": "tower",
+      "position": [
+        -1.95,
+        0.36,
+        -0.55
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 2 Leg FR"
+    },
+    {
+      "id": "obs_31",
+      "type": "wall",
+      "position": [
+        -2.2,
+        0.44,
+        -0.08
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.84,
+        0.04,
+        0.19
+      ],
+      "color": "#1E3A8A",
+      "name": "Left Row 2 Chair Seat"
+    },
+    {
+      "id": "obs_32",
+      "type": "wall",
+      "position": [
+        -2.2,
+        0.65,
+        0.08
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.76,
+        0.25,
+        0.015
+      ],
+      "color": "#1E3A8A",
+      "name": "Left Row 2 Chair Back"
+    },
+    {
+      "id": "obs_33",
+      "type": "tower",
+      "position": [
+        -2.38,
+        0.22,
+        0.06
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 2 Chair Leg L"
+    },
+    {
+      "id": "obs_34",
+      "type": "tower",
+      "position": [
+        -2.02,
+        0.22,
+        0.06
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 2 Chair Leg R"
+    },
+    {
+      "id": "obs_35",
+      "type": "wall",
+      "position": [
+        -2.2,
+        0.74,
+        -2.0
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        1.3,
+        0.03,
+        0.225
+      ],
+      "color": "#E5B56A",
+      "name": "Left Row 3 Tabletop"
+    },
+    {
+      "id": "obs_36",
+      "type": "tower",
+      "position": [
+        -2.45,
+        0.36,
+        -2.15
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 3 Leg FL"
+    },
+    {
+      "id": "obs_37",
+      "type": "tower",
+      "position": [
+        -1.95,
+        0.36,
+        -2.15
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 3 Leg FR"
+    },
+    {
+      "id": "obs_38",
+      "type": "wall",
+      "position": [
+        -2.2,
+        0.44,
+        -1.68
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.84,
+        0.04,
+        0.19
+      ],
+      "color": "#1E3A8A",
+      "name": "Left Row 3 Chair Seat"
+    },
+    {
+      "id": "obs_39",
+      "type": "wall",
+      "position": [
+        -2.2,
+        0.65,
+        -1.52
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.76,
+        0.25,
+        0.015
+      ],
+      "color": "#1E3A8A",
+      "name": "Left Row 3 Chair Back"
+    },
+    {
+      "id": "obs_40",
+      "type": "tower",
+      "position": [
+        -2.38,
+        0.22,
+        -1.54
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 3 Chair Leg L"
+    },
+    {
+      "id": "obs_41",
+      "type": "tower",
+      "position": [
+        -2.02,
+        0.22,
+        -1.54
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Left Row 3 Chair Leg R"
+    },
+    {
+      "id": "obs_42",
+      "type": "wall",
+      "position": [
+        2.2,
+        0.74,
+        1.5
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        1.3,
+        0.03,
+        0.225
+      ],
+      "color": "#E5B56A",
+      "name": "Right Row 1 Tabletop"
+    },
+    {
+      "id": "obs_43",
+      "type": "tower",
+      "position": [
+        1.95,
+        0.36,
+        1.35
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 1 Leg FL"
+    },
+    {
+      "id": "obs_44",
+      "type": "tower",
+      "position": [
+        2.45,
+        0.36,
+        1.35
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 1 Leg FR"
+    },
+    {
+      "id": "obs_45",
+      "type": "wall",
+      "position": [
+        2.2,
+        0.44,
+        1.82
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.84,
+        0.04,
+        0.19
+      ],
+      "color": "#1E3A8A",
+      "name": "Right Row 1 Chair Seat"
+    },
+    {
+      "id": "obs_46",
+      "type": "wall",
+      "position": [
+        2.2,
+        0.65,
+        1.98
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.76,
+        0.25,
+        0.015
+      ],
+      "color": "#1E3A8A",
+      "name": "Right Row 1 Chair Back"
+    },
+    {
+      "id": "obs_47",
+      "type": "tower",
+      "position": [
+        2.02,
+        0.22,
+        1.96
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 1 Chair Leg L"
+    },
+    {
+      "id": "obs_48",
+      "type": "tower",
+      "position": [
+        2.38,
+        0.22,
+        1.96
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 1 Chair Leg R"
+    },
+    {
+      "id": "obs_49",
+      "type": "wall",
+      "position": [
+        2.2,
+        0.74,
+        -0.1
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        1.3,
+        0.03,
+        0.225
+      ],
+      "color": "#E5B56A",
+      "name": "Right Row 2 Tabletop"
+    },
+    {
+      "id": "obs_50",
+      "type": "tower",
+      "position": [
+        1.95,
+        0.36,
+        -0.25
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 2 Leg FL"
+    },
+    {
+      "id": "obs_51",
+      "type": "tower",
+      "position": [
+        2.45,
+        0.36,
+        -0.25
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 2 Leg FR"
+    },
+    {
+      "id": "obs_52",
+      "type": "wall",
+      "position": [
+        2.2,
+        0.44,
+        0.22
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.84,
+        0.04,
+        0.19
+      ],
+      "color": "#1E3A8A",
+      "name": "Right Row 2 Chair Seat"
+    },
+    {
+      "id": "obs_53",
+      "type": "wall",
+      "position": [
+        2.2,
+        0.65,
+        0.38
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.76,
+        0.25,
+        0.015
+      ],
+      "color": "#1E3A8A",
+      "name": "Right Row 2 Chair Back"
+    },
+    {
+      "id": "obs_54",
+      "type": "tower",
+      "position": [
+        2.02,
+        0.22,
+        0.36
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 2 Chair Leg L"
+    },
+    {
+      "id": "obs_55",
+      "type": "tower",
+      "position": [
+        2.38,
+        0.22,
+        0.36
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 2 Chair Leg R"
+    },
+    {
+      "id": "obs_56",
+      "type": "wall",
+      "position": [
+        2.2,
+        0.74,
+        -1.8
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        1.3,
+        0.03,
+        0.225
+      ],
+      "color": "#E5B56A",
+      "name": "Right Row 3 Tabletop"
+    },
+    {
+      "id": "obs_57",
+      "type": "tower",
+      "position": [
+        1.95,
+        0.36,
+        -1.95
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 3 Leg FL"
+    },
+    {
+      "id": "obs_58",
+      "type": "tower",
+      "position": [
+        2.45,
+        0.36,
+        -1.95
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.4667,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 3 Leg FR"
+    },
+    {
+      "id": "obs_59",
+      "type": "wall",
+      "position": [
+        2.2,
+        0.44,
+        -1.48
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.84,
+        0.04,
+        0.19
+      ],
+      "color": "#1E3A8A",
+      "name": "Right Row 3 Chair Seat"
+    },
+    {
+      "id": "obs_60",
+      "type": "wall",
+      "position": [
+        2.2,
+        0.65,
+        -1.32
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "scale": [
+        0.76,
+        0.25,
+        0.015
+      ],
+      "color": "#1E3A8A",
+      "name": "Right Row 3 Chair Back"
+    },
+    {
+      "id": "obs_61",
+      "type": "tower",
+      "position": [
+        2.02,
+        0.22,
+        -1.34
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 3 Chair Leg L"
+    },
+    {
+      "id": "obs_62",
+      "type": "tower",
+      "position": [
+        2.38,
+        0.22,
+        -1.34
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.1,
+        0.28,
+        0.1
+      ],
+      "color": "#4B5563",
+      "name": "Right Row 3 Chair Leg R"
+    }
+  ],
+  "boundary": {
+    "minX": -4.0,
+    "maxX": 4.0,
+    "minZ": -4.0,
+    "maxZ": 4.0,
+    "maxY": 4.0
+  }
+}

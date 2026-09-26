@@ -1,0 +1,118 @@
+{
+  "name": "Passaic NJROTC Challenge 2 - Blind Navigation",
+  "drones": [
+    {
+      "id": "d1",
+      "name": "CoDrone EDU",
+      "color": "#58a6ff",
+      "offset": [
+        -0.444,
+        0.0,
+        -2.263
+      ],
+      "commands": [
+        {
+          "id": "c01",
+          "type": "takeoff",
+          "params": {}
+        },
+        {
+          "id": "c02",
+          "type": "hover",
+          "params": {
+            "dur": 1.5
+          }
+        },
+        {
+          "id": "c03",
+          "type": "turn_right",
+          "params": {
+            "deg": 106.2
+          }
+        },
+        {
+          "id": "c04",
+          "type": "move_forward",
+          "params": {
+            "dist": 213.4,
+            "speed": 50.0
+          }
+        },
+        {
+          "id": "c05",
+          "type": "hover",
+          "params": {
+            "dur": 1.0
+          }
+        },
+        {
+          "id": "c06",
+          "type": "turn_left",
+          "params": {
+            "deg": 94.9
+          }
+        },
+        {
+          "id": "c07",
+          "type": "go",
+          "params": {
+            "dir": "down",
+            "power": 35.0,
+            "dur": 0.8
+          }
+        },
+        {
+          "id": "c08",
+          "type": "move_forward",
+          "params": {
+            "dist": 182.9,
+            "speed": 45.0
+          }
+        },
+        {
+          "id": "c09",
+          "type": "turn_right",
+          "params": {
+            "deg": 116.6
+          }
+        },
+        {
+          "id": "c10",
+          "type": "move_forward",
+          "params": {
+            "dist": 152.4,
+            "speed": 50.0
+          }
+        },
+        {
+          "id": "c11",
+          "type": "hover",
+          "params": {
+            "dur": 1.0
+          }
+        },
+        {
+          "id": "c12",
+          "type": "turn_left",
+          "params": {
+            "deg": 83.4
+          }
+        },
+        {
+          "id": "c13",
+          "type": "move_forward",
+          "params": {
+            "dist": 165.0,
+            "speed": 50.0
+          }
+        },
+        {
+          "id": "c14",
+          "type": "land",
+          "params": {}
+        }
+      ]
+    }
+  ],
+  "activeDroneId": "d1"
+}

@@ -1,0 +1,111 @@
+{
+  "name": "Passaic NJROTC Challenge 1 - Operation Handoff",
+  "drones": [
+    {
+      "id": "d1",
+      "name": "Pilot 1",
+      "color": "#58a6ff",
+      "offset": [
+        0.0,
+        0.0,
+        -2.0
+      ],
+      "commands": [
+        {
+          "id": "p1_01",
+          "type": "takeoff",
+          "params": {}
+        },
+        {
+          "id": "p1_02",
+          "type": "hover",
+          "params": {
+            "dur": 1.5
+          }
+        },
+        {
+          "id": "p1_03",
+          "type": "move_forward",
+          "params": {
+            "dist": 152.0,
+            "speed": 50.0
+          }
+        },
+        {
+          "id": "p1_04",
+          "type": "circle",
+          "params": {
+            "speed": 60.0,
+            "dir": "clockwise"
+          }
+        },
+        {
+          "id": "p1_05",
+          "type": "go",
+          "params": {
+            "dir": "down",
+            "power": 40.0,
+            "dur": 0.8
+          }
+        },
+        {
+          "id": "p1_06",
+          "type": "move_forward",
+          "params": {
+            "dist": 122.0,
+            "speed": 45.0
+          }
+        },
+        {
+          "id": "p1_07",
+          "type": "move_forward",
+          "params": {
+            "dist": 122.0,
+            "speed": 45.0
+          }
+        },
+        {
+          "id": "p1_08",
+          "type": "move_forward",
+          "params": {
+            "dist": 152.0,
+            "speed": 45.0
+          }
+        },
+        {
+          "id": "p1_09",
+          "type": "land",
+          "params": {}
+        },
+        {
+          "id": "p1_10",
+          "type": "takeoff",
+          "params": {}
+        },
+        {
+          "id": "p1_11",
+          "type": "turn_degree",
+          "params": {
+            "deg": 180.0,
+            "timeout": 3.0,
+            "p_value": 10.0
+          }
+        },
+        {
+          "id": "p1_12",
+          "type": "move_forward",
+          "params": {
+            "dist": 620.0,
+            "speed": 60.0
+          }
+        },
+        {
+          "id": "p1_13",
+          "type": "land",
+          "params": {}
+        }
+      ]
+    }
+  ],
+  "activeDroneId": "d1"
+}

@@ -1,0 +1,137 @@
+{
+  "obstacles": [
+    {
+      "id": "c1_takeoff_pad",
+      "type": "cone",
+      "position": [
+        0.0,
+        0.0255,
+        -2.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.475,
+        0.1275,
+        0.475
+      ],
+      "color": "#00FF00",
+      "name": "Takeoff Pad (Green)"
+    },
+    {
+      "id": "c1_cone_body",
+      "type": "cone",
+      "position": [
+        0.0,
+        0.152,
+        -0.48
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.35,
+        0.76,
+        0.35
+      ],
+      "color": "#FF5F00",
+      "name": "Cone Marker"
+    },
+    {
+      "id": "c1_desk_1",
+      "type": "wall",
+      "position": [
+        -0.3,
+        0.75,
+        0.74
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1.22,
+        0.019,
+        0.457
+      ],
+      "color": "#D2B48C",
+      "name": "Desk 1 (Under)"
+    },
+    {
+      "id": "c1_desk_2",
+      "type": "wall",
+      "position": [
+        0.3,
+        0.75,
+        1.96
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1.22,
+        0.019,
+        0.457
+      ],
+      "color": "#D2B48C",
+      "name": "Desk 2 (Under)"
+    },
+    {
+      "id": "c1_desk_3",
+      "type": "wall",
+      "position": [
+        -0.2,
+        0.75,
+        3.48
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1.22,
+        0.019,
+        0.457
+      ],
+      "color": "#D2B48C",
+      "name": "Desk 3 (Under)"
+    },
+    {
+      "id": "c1_land_pad",
+      "type": "cone",
+      "position": [
+        0.0,
+        0.0255,
+        4.2
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.475,
+        0.1275,
+        0.475
+      ],
+      "color": "#FF0000",
+      "name": "Final Landing Pad"
+    }
+  ],
+  "boundary": {
+    "minX": -4.0,
+    "maxX": 4.0,
+    "minZ": -4.0,
+    "maxZ": 5.0,
+    "maxY": 4.0
+  }
+}
