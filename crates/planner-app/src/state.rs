@@ -129,6 +129,11 @@ pub struct AppState {
     pub show_right: bool,
     tick_epoch: u64,
     last_tick_epoch: u64,
+    pub sensor_set: planner_core::sensors::SensorSet,
+    pub route_waypoints: Vec<[f64; 3]>,
+    pub route_start_pos: [f64; 3],
+    pub route_start_heading: f64,
+    pub route_result: Option<planner_core::route::RouteResult>,
 }
 
 impl Default for AppState {
@@ -179,6 +184,11 @@ impl AppState {
             show_right: true,
             tick_epoch: 0,
             last_tick_epoch: u64::MAX,
+            sensor_set: planner_core::sensors::SensorSet::new(),
+            route_waypoints: Vec::new(),
+            route_start_pos: [0.0, 0.0, 0.0],
+            route_start_heading: 0.0,
+            route_result: None,
         };
         state.refresh_sim();
         state

@@ -151,6 +151,33 @@ impl DronePlannerApp {
         }
     }
 
+    fn load_adc_course(state: &mut AppState) {
+        state.log("Loading ADC Fast Track mission field...");
+        let file = planner_core::adc_field::build_fast_track();
+        let count = file.obstacles.len();
+        {
+            let store = state.obstacle_store_mut();
+            *store = file.obstacles;
+        }
+        if let Some(boundary) = file.boundary {
+            state.obstacles.boundary = boundary;
+        }
+        state.log(format!("Loaded ADC Fast Track field: {count} obstacles"));
+        let uncertain = planner_core::adc_field::uncertain_dimensions();
+        if !uncertain.is_empty() {
+            state.log_level(
+                "warn",
+                format!(
+                    "{} dimensions are unreadable in the source manual and use placeholder values: {}",
+                    uncertain.len(),
+                    uncertain.join(", ")
+                ),
+            );
+        }
+        state.selection.obstacle_id = None;
+        state.mark_dirty();
+    }
+
     fn import_obstacles_dialog(state: &mut AppState) {
         state.log("Importing obstacles...");
         let path = rfd::FileDialog::new()
@@ -278,6 +305,9 @@ impl eframe::App for DronePlannerApp {
                     }
                     if ui.button("Import Obstacles").clicked() {
                         Self::import_obstacles_dialog(&mut self.state);
+                    }
+                    if ui.button("Load ADC Course").clicked() {
+                        Self::load_adc_course(&mut self.state);
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(4.0);

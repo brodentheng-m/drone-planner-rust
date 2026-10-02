@@ -1,4 +1,6 @@
 use crate::commands::js_num;
+use crate::obstacles::ObstacleSet;
+use crate::sensors::{default_sensor, evaluate, ColorTable, SensorKind};
 use std::collections::BTreeMap;
 
 pub const SENSOR_BATTERY: f64 = 80.0;
@@ -234,6 +236,73 @@ pub fn get_temperature() -> f64 {
 
 pub fn get_distance() -> f64 {
     SENSOR_FRONT_RANGE
+}
+
+pub fn eval_front_range(probe: [f64; 3], heading: f64, obstacles: Option<&ObstacleSet>) -> f64 {
+    match obstacles {
+        Some(obs) => {
+            let sensor = default_sensor(SensorKind::FrontRange);
+            let surfaces = ColorTable::new();
+            let reading = evaluate(&sensor, probe, heading, obs, &surfaces);
+            if reading.hit {
+                reading.distance_m.map(|m| (m * 100.0).min(100.0)).unwrap_or(100.0)
+            } else {
+                SENSOR_FRONT_RANGE
+            }
+        }
+        None => get_front_range(),
+    }
+}
+
+pub fn eval_bottom_range(
+    probe: [f64; 3],
+    heading: f64,
+    altitude_m: f64,
+    obstacles: Option<&ObstacleSet>,
+) -> f64 {
+    match obstacles {
+        Some(obs) => {
+            let sensor = default_sensor(SensorKind::BottomRange);
+            let surfaces = ColorTable::new();
+            let reading = evaluate(&sensor, probe, heading, obs, &surfaces);
+            let ground_cm = altitude_m * 100.0;
+            if reading.hit {
+                reading.distance_m.map(|m| (m * 100.0).min(ground_cm)).unwrap_or(ground_cm)
+            } else {
+                ground_cm
+            }
+        }
+        None => get_bottom_range(altitude_m),
+    }
+}
+
+pub fn eval_color(
+    probe: [f64; 3],
+    heading: f64,
+    kind: SensorKind,
+    obstacles: Option<&ObstacleSet>,
+) -> String {
+    match obstacles {
+        Some(obs) => {
+            let sensor = default_sensor(kind);
+            let mut surfaces = ColorTable::new();
+            for o in &obs.obstacles {
+                if let Some(c) = &o.color {
+                    surfaces.insert(&o.id, c);
+                }
+            }
+            let reading = evaluate(&sensor, probe, heading, obs, &surfaces);
+            if reading.hit && reading.value != "Unknown" {
+                reading.value
+            } else {
+                "Unknown".to_string()
+            }
+        }
+        None => match kind {
+            SensorKind::FrontColor => get_front_color().to_string(),
+            _ => get_back_color().to_string(),
+        },
+    }
 }
 
 pub fn list_ensure(state: &mut RuntimeState, name: &str) {

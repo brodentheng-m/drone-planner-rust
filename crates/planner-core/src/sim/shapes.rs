@@ -1,7 +1,14 @@
 use std::f64::consts::PI;
 
+use crate::obstacles::ObstacleSet;
+use crate::sensors::{default_sensor, evaluate, ColorTable, SensorKind};
 use crate::sim::drive::{DEFAULT_SPEED, DT, MAX_PITCH, MAX_ROLL, SimState, drive_step};
 use crate::sim::runtime::{RuntimeState, VarValue};
+
+const AVOID_WALL_DEADBAND_CM: f64 = 20.0;
+const AVOID_WALL_KP: f64 = 0.4;
+const AVOID_WALL_STABLE_STEPS: usize = 4;
+const MIN_CLEARANCE_M: f64 = 0.15;
 
 pub fn circle(state: &mut SimState, speed: f64, dir: &str) -> f64 {
     let speed = speed / 100.0;
@@ -191,16 +198,168 @@ fn retreat(state: &mut SimState, speed: f64, dist: f64) -> f64 {
     dur
 }
 
-pub fn keep_distance(state: &mut SimState, speed: f64, dist: f64) -> f64 {
-    retreat(state, speed, dist)
+pub fn keep_distance(
+    state: &mut SimState,
+    obstacles: Option<&ObstacleSet>,
+    speed: f64,
+    dist: f64,
+    timeout: f64,
+) -> f64 {
+    let obstacles = match obstacles {
+        Some(obs) => obs,
+        None => return retreat(state, speed, dist),
+    };
+
+    if timeout <= 0.0 {
+        return 0.0;
+    }
+
+    let max_steps = ((timeout / DT).ceil() as usize).max(1);
+    let front_sensor = default_sensor(SensorKind::FrontRange);
+    let surfaces = ColorTable::new();
+    let hr = state.heading * PI / 180.0;
+    let cos_h = hr.cos();
+    let sin_h = hr.sin();
+    let nominal_speed = DEFAULT_SPEED * 2.0;
+
+    for _ in 0..max_steps {
+        let probe = [state.x, state.z, state.y];
+        let reading = evaluate(&front_sensor, probe, state.heading, obstacles, &surfaces);
+        let current_dist_cm = if reading.hit {
+            reading.distance_m.unwrap_or(1.0) * 100.0
+        } else {
+            100.0
+        };
+
+        let error_cm = current_dist_cm - dist;
+        if reading.hit && error_cm.abs() <= 10.0 {
+            drive_step(state, state.x, state.y, state.z, state.heading, DT);
+            state.push_point(state.heading, 0.0, 0.0, None);
+        } else {
+            let error_pct = error_cm.clamp(-100.0, 100.0);
+            let pitch_speed = error_pct * AVOID_WALL_KP;
+            let v = (speed / 100.0) * (pitch_speed / 100.0) * nominal_speed;
+            let pitch = -MAX_PITCH * (pitch_speed / 100.0).clamp(-1.0, 1.0);
+            let next_x = state.x + cos_h * v * DT;
+            let next_y = state.y + sin_h * v * DT;
+            drive_step(state, next_x, next_y, state.z, state.heading, DT);
+            state.push_point(state.heading, pitch, 0.0, None);
+        }
+    }
+    max_steps as f64 * DT
 }
 
-pub fn avoid_wall(state: &mut SimState, speed: f64, dist: f64) -> f64 {
-    retreat(state, speed, dist)
+pub fn avoid_wall(
+    state: &mut SimState,
+    obstacles: Option<&ObstacleSet>,
+    speed: f64,
+    dist: f64,
+    timeout: f64,
+) -> f64 {
+    let obstacles = match obstacles {
+        Some(obs) => obs,
+        None => return retreat(state, speed, dist),
+    };
+
+    if timeout <= 0.0 {
+        let th = state.heading;
+        drive_step(state, state.x, state.y, state.z, th, DT);
+        state.push_point(th, 0.0, 0.0, None);
+        return 0.0;
+    }
+
+    let max_steps = ((timeout / DT).ceil() as usize).max(1);
+    let target_dist_cm = dist;
+    let front_sensor = default_sensor(SensorKind::FrontRange);
+    let surfaces = ColorTable::new();
+    let hr = state.heading * PI / 180.0;
+    let cos_h = hr.cos();
+    let sin_h = hr.sin();
+    let nominal_speed = DEFAULT_SPEED * 2.0;
+
+    let mut stable_count = 0usize;
+    let mut steps_executed = 0usize;
+
+    for _ in 0..max_steps {
+        steps_executed += 1;
+        let probe = [state.x, state.z, state.y];
+        let reading = evaluate(&front_sensor, probe, state.heading, obstacles, &surfaces);
+
+        let (current_dist_cm, hit) = if reading.hit {
+            (reading.distance_m.unwrap_or(1.0) * 100.0, true)
+        } else {
+            (100.0, false)
+        };
+
+        let error_cm = if hit {
+            current_dist_cm - target_dist_cm
+        } else {
+            100.0 - target_dist_cm
+        };
+
+        if hit && error_cm.abs() <= AVOID_WALL_DEADBAND_CM {
+            stable_count += 1;
+            let th = state.heading;
+            drive_step(state, state.x, state.y, state.z, th, DT);
+            state.push_point(th, 0.0, 0.0, None);
+            if stable_count >= AVOID_WALL_STABLE_STEPS {
+                break;
+            }
+        } else {
+            stable_count = 0;
+            let error_pct = error_cm.clamp(-100.0, 100.0);
+            let pitch_speed = error_pct * AVOID_WALL_KP;
+            let v = (speed / 100.0) * (pitch_speed / 100.0) * nominal_speed;
+            let pitch = -MAX_PITCH * (pitch_speed / 100.0).clamp(-1.0, 1.0);
+
+            let mut step_dist = v * DT;
+            if v > 0.0 && hit {
+                let clearance_m = (current_dist_cm / 100.0) - MIN_CLEARANCE_M;
+                if step_dist > clearance_m.max(0.0) {
+                    step_dist = clearance_m.max(0.0);
+                }
+            }
+
+            let next_x = state.x + cos_h * step_dist;
+            let next_y = state.y + sin_h * step_dist;
+            let th = state.heading;
+            drive_step(state, next_x, next_y, state.z, th, DT);
+            state.push_point(th, pitch, 0.0, None);
+        }
+    }
+
+    let th = state.heading;
+    drive_step(state, state.x, state.y, state.z, th, DT);
+    state.push_point(th, 0.0, 0.0, None);
+    (steps_executed + 1) as f64 * DT
 }
 
-pub fn detect_wall(state: &mut SimState, var: &str, runtime: &mut RuntimeState) -> f64 {
-    let _ = state;
-    runtime.vars.insert(var.to_string(), VarValue::Num(0.0));
+pub fn detect_wall(
+    state: &mut SimState,
+    obstacles: Option<&ObstacleSet>,
+    var: &str,
+    threshold_cm: f64,
+    runtime: &mut RuntimeState,
+) -> f64 {
+    let detected = match obstacles {
+        Some(obs) => {
+            let sensor = default_sensor(SensorKind::FrontRange);
+            let surfaces = ColorTable::new();
+            let probe = [state.x, state.z, state.y];
+            let reading = evaluate(&sensor, probe, state.heading, obs, &surfaces);
+            if reading.hit {
+                let d_cm = reading.distance_m.unwrap_or(10.0) * 100.0;
+                if d_cm <= threshold_cm {
+                    1.0
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            }
+        }
+        None => 0.0,
+    };
+    runtime.vars.insert(var.to_string(), VarValue::Num(detected));
     0.1
 }

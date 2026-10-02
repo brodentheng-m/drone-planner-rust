@@ -13,3 +13,12 @@ serde_json.workspace = true
 [[test]]
 name = "parity"
 path = "../../tests/parity.rs"
+
+[[test]]
+name = "e2e_sensor_avoidance"
+path = "../../tests/e2e_sensor_avoidance.rs"
+
+[[test]]
+name = "challenger_m1_adversarial"
+path = "../../tests/challenger_m1_adversarial.rs"
+

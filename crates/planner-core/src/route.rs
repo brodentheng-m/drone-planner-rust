@@ -658,13 +658,13 @@ fn make_command(id: &str, ct: CommandType, params: &[(&str, ParamValue)]) -> Com
 
 fn build_commands(
     path_segments: &[Vec<(f64, f64)>],
-    start_heading_deg: f64,
+    _start_heading_deg: f64,
     cruise_speed: f64,
 ) -> (Vec<Command>, Vec<LegInfo>, Vec<usize>) {
     let mut commands = Vec::new();
     let mut legs = Vec::new();
     let mut cmd_id = 0usize;
-    let mut current_heading = start_heading_deg;
+    let mut current_heading = 0.0;
 
     commands.push(make_command(
         &format!("r{cmd_id}"),
@@ -740,7 +740,7 @@ pub fn verify_route(
     commands: &[Command],
     waypoints: &[[f64; 3]],
     obstacles: &ObstacleSet,
-    _start: [f64; 3],
+    start: [f64; 3],
     leg_ends: &[usize],
     path: &[[f64; 3]],
     margin: f64,
@@ -803,8 +803,8 @@ pub fn verify_route(
 
     let mut reached = 0usize;
     for (i, wp) in waypoints.iter().enumerate() {
-        let sim_x = wp[0];
-        let sim_y = wp[2];
+        let sim_x = wp[0] - start[0];
+        let sim_y = wp[2] - start[2];
         let end_idx = *leg_ends.get(i).unwrap_or(&0);
         if end_idx >= commands.len() { continue; }
         let res = sim::simulate_commands(&commands[0..=end_idx], Some(obstacles));
@@ -1148,6 +1148,36 @@ mod tests {
             c_wide >= c_short - 1e-6,
             "WidestClearance ({c_wide}) should have >= clearance than Shortest ({c_short})"
         );
+    }
+
+    #[test]
+    fn non_origin_start_routes_successfully() {
+        let obs = empty_obstacles();
+        let opts = default_opts(Optimize::Shortest);
+        let start = [2.0, 0.8, 3.0];
+        let wps = vec![[4.0, 0.8, 3.0]];
+        let res = route_through(&wps, start, 0.0, &obs, &opts);
+        assert!(
+            res.feasible,
+            "a clear straight line from a non-origin start must be routable, got {:?}",
+            res.failure
+        );
+        assert_eq!(res.waypoints_reached, 1);
+    }
+
+    #[test]
+    fn non_origin_multi_leg_route_succeeds() {
+        let obs = empty_obstacles();
+        let opts = default_opts(Optimize::WidestClearance);
+        let start = [-3.0, 0.8, 1.5];
+        let wps = vec![[0.0, 0.8, 1.5], [3.0, 0.8, -2.0]];
+        let res = route_through(&wps, start, 45.0, &obs, &opts);
+        assert!(
+            res.feasible,
+            "multi-leg route from a non-origin start must be routable, got {:?}",
+            res.failure
+        );
+        assert_eq!(res.waypoints_reached, 2);
     }
 
     #[test]

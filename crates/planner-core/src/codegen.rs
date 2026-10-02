@@ -498,6 +498,192 @@ pub fn generate_swarm_code(plan: &Plan) -> String {
     lines.join("\n")
 }
 
+pub fn generate_autonomous_navigation_script(target_x: f64, target_y: f64, target_z: f64) -> String {
+    let mut lines = Vec::new();
+    lines.push("from codrone_edu.drone import *".to_string());
+    lines.push("import math".to_string());
+    lines.push("import time".to_string());
+    lines.push(String::new());
+    lines.push("def navigate_to_waypoint(drone, target_x, target_y, target_z=80, tolerance=15, timeout=60):".to_string());
+    lines.push("    start_time = time.time()".to_string());
+    lines.push("    evasion_direction = 1".to_string());
+    lines.push("    stuck_counter = 0".to_string());
+    lines.push("    while time.time() - start_time < timeout:".to_string());
+    lines.push("        cur_x = drone.get_pos_x(\"cm\")".to_string());
+    lines.push("        cur_y = drone.get_pos_y(\"cm\")".to_string());
+    lines.push("        cur_z = drone.get_pos_z(\"cm\")".to_string());
+    lines.push("        dx = target_x - cur_x".to_string());
+    lines.push("        dy = target_y - cur_y".to_string());
+    lines.push("        dist = math.hypot(dx, dy)".to_string());
+    lines.push("        if dist <= tolerance:".to_string());
+    lines.push("            drone.hover(0.5)".to_string());
+    lines.push("            break".to_string());
+    lines.push("        target_heading = math.degrees(math.atan2(dy, dx))".to_string());
+    lines.push("        drone.turn_degree(int(target_heading), timeout=2, p_value=10)".to_string());
+    lines.push("        front_dist = drone.get_front_range(\"cm\")".to_string());
+    lines.push("        if drone.detect_wall(50) or front_dist < 50:".to_string());
+    lines.push("            drone.avoid_wall(1.5, 40)".to_string());
+    lines.push("            if evasion_direction == 1:".to_string());
+    lines.push("                drone.move_right(35, speed=0.5)".to_string());
+    lines.push("            else:".to_string());
+    lines.push("                drone.move_left(35, speed=0.5)".to_string());
+    lines.push("            stuck_counter += 1".to_string());
+    lines.push("            if stuck_counter > 3:".to_string());
+    lines.push("                evasion_direction *= -1".to_string());
+    lines.push("                stuck_counter = 0".to_string());
+    lines.push("        else:".to_string());
+    lines.push("            stuck_counter = 0".to_string());
+    lines.push("            step = min(dist, 40)".to_string());
+    lines.push("            drone.move_forward(int(step), speed=0.6)".to_string());
+    lines.push("    drone.hover(1.0)".to_string());
+    lines.push(String::new());
+    lines.push("drone = Drone()".to_string());
+    lines.push("drone.pair()".to_string());
+    lines.push("drone.takeoff()".to_string());
+    lines.push(format!("navigate_to_waypoint(drone, {target_x}, {target_y}, {target_z})"));
+    lines.push("drone.land()".to_string());
+    lines.push("drone.close()".to_string());
+    lines.join("\n")
+}
+
+pub fn generate_waypoint_avoidance_code(waypoints: &[[f64; 3]]) -> String {
+    let mut lines = Vec::new();
+    lines.push("from codrone_edu.drone import *".to_string());
+    lines.push("import math".to_string());
+    lines.push("import time".to_string());
+    lines.push(String::new());
+    lines.push("def navigate_to_waypoint(drone, target_x, target_y, target_z=80, tolerance=15, timeout=60):".to_string());
+    lines.push("    start_time = time.time()".to_string());
+    lines.push("    evasion_direction = 1".to_string());
+    lines.push("    stuck_counter = 0".to_string());
+    lines.push("    while time.time() - start_time < timeout:".to_string());
+    lines.push("        cur_x = drone.get_pos_x(\"cm\")".to_string());
+    lines.push("        cur_y = drone.get_pos_y(\"cm\")".to_string());
+    lines.push("        cur_z = drone.get_pos_z(\"cm\")".to_string());
+    lines.push("        dx = target_x - cur_x".to_string());
+    lines.push("        dy = target_y - cur_y".to_string());
+    lines.push("        dist = math.hypot(dx, dy)".to_string());
+    lines.push("        if dist <= tolerance:".to_string());
+    lines.push("            drone.hover(0.5)".to_string());
+    lines.push("            break".to_string());
+    lines.push("        target_heading = math.degrees(math.atan2(dy, dx))".to_string());
+    lines.push("        drone.turn_degree(int(target_heading), timeout=2, p_value=10)".to_string());
+    lines.push("        front_dist = drone.get_front_range(\"cm\")".to_string());
+    lines.push("        if drone.detect_wall(50) or front_dist < 50:".to_string());
+    lines.push("            drone.avoid_wall(1.5, 40)".to_string());
+    lines.push("            if evasion_direction == 1:".to_string());
+    lines.push("                drone.move_right(35, speed=0.5)".to_string());
+    lines.push("            else:".to_string());
+    lines.push("                drone.move_left(35, speed=0.5)".to_string());
+    lines.push("            stuck_counter += 1".to_string());
+    lines.push("            if stuck_counter > 3:".to_string());
+    lines.push("                evasion_direction *= -1".to_string());
+    lines.push("                stuck_counter = 0".to_string());
+    lines.push("        else:".to_string());
+    lines.push("            stuck_counter = 0".to_string());
+    lines.push("            step = min(dist, 40)".to_string());
+    lines.push("            drone.move_forward(int(step), speed=0.6)".to_string());
+    lines.push("    drone.hover(1.0)".to_string());
+    lines.push(String::new());
+    lines.push("drone = Drone()".to_string());
+    lines.push("drone.pair()".to_string());
+    lines.push("drone.takeoff()".to_string());
+    for wp in waypoints {
+        lines.push(format!("navigate_to_waypoint(drone, {}, {}, {})", wp[0], wp[1], wp[2]));
+    }
+    lines.push("drone.land()".to_string());
+    lines.push("drone.close()".to_string());
+    lines.join("\n")
+}
+
+pub fn generate_dynamic_navigation_code(target: [f64; 3]) -> String {
+    generate_autonomous_navigation_script(target[0], target[1], target[2])
+}
+
+pub fn build_dynamic_navigation_plan(waypoints: &[[f64; 3]]) -> Plan {
+    let mut commands = Vec::new();
+    commands.push(Command {
+        id: "takeoff".to_string(),
+        command_type: CommandType::Takeoff,
+        params: std::collections::BTreeMap::new(),
+        children: Vec::new(),
+    });
+    for (i, wp) in waypoints.iter().enumerate() {
+        let mut loop_children = Vec::new();
+        let mut detect_params = std::collections::BTreeMap::new();
+        detect_params.insert("var".to_string(), ParamValue::Str("wall".to_string()));
+        detect_params.insert("dist".to_string(), ParamValue::Number(50.0));
+        loop_children.push(Command {
+            id: format!("det_{i}"),
+            command_type: CommandType::DetectWall,
+            params: detect_params,
+            children: Vec::new(),
+        });
+        let mut avoid_params = std::collections::BTreeMap::new();
+        avoid_params.insert("timeout".to_string(), ParamValue::Number(1.5));
+        avoid_params.insert("dist".to_string(), ParamValue::Number(40.0));
+        loop_children.push(Command {
+            id: format!("avoid_{i}"),
+            command_type: CommandType::AvoidWall,
+            params: avoid_params,
+            children: Vec::new(),
+        });
+        let mut dodge_params = std::collections::BTreeMap::new();
+        dodge_params.insert("dist".to_string(), ParamValue::Number(35.0));
+        dodge_params.insert("speed".to_string(), ParamValue::Number(50.0));
+        loop_children.push(Command {
+            id: format!("dodge_{i}"),
+            command_type: CommandType::MoveRight,
+            params: dodge_params,
+            children: Vec::new(),
+        });
+        let mut fwd_params = std::collections::BTreeMap::new();
+        fwd_params.insert("dist".to_string(), ParamValue::Number(40.0));
+        fwd_params.insert("speed".to_string(), ParamValue::Number(60.0));
+        loop_children.push(Command {
+            id: format!("fwd_{i}"),
+            command_type: CommandType::MoveForward,
+            params: fwd_params,
+            children: Vec::new(),
+        });
+        let mut while_params = std::collections::BTreeMap::new();
+        while_params.insert("condition".to_string(), ParamValue::Str("wall == 1".to_string()));
+        commands.push(Command {
+            id: format!("while_{i}"),
+            command_type: CommandType::WhileBlock,
+            params: while_params,
+            children: loop_children,
+        });
+        let mut target_fwd_params = std::collections::BTreeMap::new();
+        let step_dist = (wp[0] * wp[0] + wp[1] * wp[1]).sqrt();
+        target_fwd_params.insert("dist".to_string(), ParamValue::Number(step_dist));
+        target_fwd_params.insert("speed".to_string(), ParamValue::Number(60.0));
+        commands.push(Command {
+            id: format!("move_target_{i}"),
+            command_type: CommandType::MoveForward,
+            params: target_fwd_params,
+            children: Vec::new(),
+        });
+    }
+    commands.push(Command {
+        id: "land".to_string(),
+        command_type: CommandType::Land,
+        params: std::collections::BTreeMap::new(),
+        children: Vec::new(),
+    });
+    Plan {
+        name: "Autonomous Dynamic Navigation".to_string(),
+        drones: vec![crate::planio::PlanDrone {
+            id: "d1".to_string(),
+            name: "d1".to_string(),
+            color: "#58a6ff".to_string(),
+            commands,
+            offset: [0.0, 0.0, 0.0],
+        }],
+        active_drone_id: Some("d1".to_string()),
+    }
+}
+
 pub fn generate_animation_code(plan: &Plan) -> String {
     let mut lines: Vec<String> = [
         "import matplotlib.pyplot as plt",
@@ -827,6 +1013,21 @@ fn parse_line(line: &str) -> Option<Command> {
             ));
         }
     }
+    if line.contains("drone.detect_wall(") {
+        let var_name = if let Some(pos) = line.find('=') {
+            line[..pos].trim()
+        } else {
+            "detected"
+        };
+        let after_call = line.find("drone.detect_wall(").map(|pos| &line[pos + "drone.detect_wall(".len()..]).unwrap_or("");
+        let arg_content = after_call.find(')').map(|pos| &after_call[..pos]).unwrap_or("").trim();
+        let mut params = vec![("var", ParamValue::Str(var_name.to_string()))];
+        if !arg_content.is_empty() {
+            let clean_arg = arg_content.strip_prefix("distance=").unwrap_or(arg_content).trim();
+            params.push(("dist", num_or(Some(clean_arg), 50.0)));
+        }
+        return Some(cmd_of(CommandType::DetectWall, params));
+    }
     if !word.is_empty() && line.contains('=') {
         if let Some(value) = assign_tail(line, word) {
             return Some(cmd_of(
@@ -1114,11 +1315,20 @@ fn parse_drone_call(line: &str) -> Option<Command> {
             let args_c = first_paren_args(line, prefix)?;
             let parts: Vec<&str> = args_c.split(',').map(|a| a.trim()).collect();
             let command_type = if method == "keep_distance" { CommandType::KeepDistance } else { CommandType::AvoidWall };
+            let default_dist = if method == "keep_distance" { 50.0 } else { 70.0 };
+            let (timeout, dist) = if parts.len() >= 2 {
+                (num_or(parts.first().copied(), 2.0), num_or(parts.get(1).copied(), default_dist))
+            } else if parts.len() == 1 && !parts[0].is_empty() {
+                (num_or(parts.first().copied(), 2.0), ParamValue::Number(default_dist))
+            } else {
+                (ParamValue::Number(2.0), ParamValue::Number(default_dist))
+            };
             Some(cmd_of(
                 command_type,
                 vec![
-                    ("dist", num_or(parts.first().copied(), 50.0)),
-                    ("speed", int_or(parts.get(1).copied(), 50.0)),
+                    ("timeout", timeout),
+                    ("dist", dist),
+                    ("speed", ParamValue::Number(50.0)),
                 ],
             ))
         }
@@ -1423,5 +1633,45 @@ mod tests {
             generate_swarm_code(&built),
             golden.swarm.code.clone().unwrap_or_default()
         );
+    }
+
+    #[test]
+    fn test_parse_avoid_wall_and_keep_distance_roundtrip() {
+        let cmd = parse_line("drone.avoid_wall(2.5, 65)").expect("parse avoid_wall");
+        assert_eq!(cmd.command_type, CommandType::AvoidWall);
+        assert_eq!(cmd.param_f64("timeout"), Some(2.5));
+        assert_eq!(cmd.param_f64("dist"), Some(65.0));
+
+        let kd = parse_line("drone.keep_distance(1.8, 45)").expect("parse keep_distance");
+        assert_eq!(kd.command_type, CommandType::KeepDistance);
+        assert_eq!(kd.param_f64("timeout"), Some(1.8));
+        assert_eq!(kd.param_f64("dist"), Some(45.0));
+    }
+
+    #[test]
+    fn test_parse_detect_wall_with_and_without_arg() {
+        let dw1 = parse_line("det = drone.detect_wall()").expect("parse detect_wall bare");
+        assert_eq!(dw1.command_type, CommandType::DetectWall);
+        assert_eq!(dw1.param_str("var"), Some("det"));
+
+        let dw2 = parse_line("wall = drone.detect_wall(60)").expect("parse detect_wall dist");
+        assert_eq!(dw2.command_type, CommandType::DetectWall);
+        assert_eq!(dw2.param_str("var"), Some("wall"));
+        assert_eq!(dw2.param_f64("dist"), Some(60.0));
+    }
+
+    #[test]
+    fn test_autonomous_navigation_codegen_structure() {
+        let code = generate_autonomous_navigation_script(200.0, 150.0, 80.0);
+        assert!(code.contains("navigate_to_waypoint(drone, 200, 150, 80)"));
+        assert!(code.contains("drone.avoid_wall(1.5, 40)"));
+        assert!(code.contains("drone.detect_wall(50)"));
+        assert!(code.contains("drone.get_front_range(\"cm\")"));
+
+        let plan = build_dynamic_navigation_plan(&[[100.0, 200.0, 80.0]]);
+        let plan_code = generate_code(&plan);
+        assert!(plan_code.contains("drone.takeoff()"));
+        assert!(plan_code.contains("drone.avoid_wall(1.5, 40)"));
+        assert!(plan_code.contains("drone.land()"));
     }
 }

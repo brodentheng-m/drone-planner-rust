@@ -3,7 +3,11 @@ use egui::{Color32, CornerRadius, Stroke, Ui, Visuals};
 use std::time::Duration;
 
 pub mod obstacles_panel;
+pub mod overlay_route;
+pub mod overlay_sensors;
 pub mod plan_tree;
+pub mod route_panel;
+pub mod sensor_panel;
 pub mod telemetry;
 pub mod viewport;
 
@@ -60,6 +64,18 @@ impl UiRoot {
         }
         self.obstacles_panel.show(ui, state);
         self.plan_tree.show(ui, state);
+        egui::CollapsingHeader::new("Sensors")
+            .id_salt("sensors_section")
+            .default_open(false)
+            .show(ui, |ui| {
+                crate::ui::sensor_panel::draw(ui, state);
+            });
+        egui::CollapsingHeader::new("Route")
+            .id_salt("route_section")
+            .default_open(false)
+            .show(ui, |ui| {
+                crate::ui::route_panel::draw(ui, state);
+            });
         self.viewport.show(ui, state);
     }
 }

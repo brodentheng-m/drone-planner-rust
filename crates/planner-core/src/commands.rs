@@ -380,15 +380,26 @@ fn sway_code(p: &BTreeMap<String, ParamValue>) -> String {
 }
 
 fn keep_distance_code(p: &BTreeMap<String, ParamValue>) -> String {
-    format!("drone.keep_distance(2, {})", interp_param(p, "dist"))
+    let timeout = p.get("timeout").map(interp).unwrap_or_else(|| "2".to_string());
+    let dist = interp_param(p, "dist");
+    format!("drone.keep_distance({timeout}, {dist})")
 }
 
 fn avoid_wall_code(p: &BTreeMap<String, ParamValue>) -> String {
-    format!("drone.avoid_wall(2, {})", interp_param(p, "dist"))
+    let timeout = p.get("timeout").map(interp).unwrap_or_else(|| "2".to_string());
+    let dist = interp_param(p, "dist");
+    format!("drone.avoid_wall({timeout}, {dist})")
 }
 
 fn detect_wall_code(p: &BTreeMap<String, ParamValue>) -> String {
-    format!("{} = drone.detect_wall()", interp_param(p, "var"))
+    let var = interp_param(p, "var");
+    if let Some(dist) = p.get("dist") {
+        let dist_val = interp(dist);
+        if !dist_val.is_empty() && dist_val != "undefined" {
+            return format!("{var} = drone.detect_wall({dist_val})");
+        }
+    }
+    format!("{var} = drone.detect_wall()")
 }
 
 fn led_rgb(color: &str) -> (i32, i32, i32) {
@@ -710,11 +721,18 @@ fn build_command_defs() -> Vec<CommandDef> {
         pd_num("secs", "Secs", 2.0, Some(1.0), Some(10.0), None),
         pd_select("dir", "Direction", "forward-back", SWAY_DIR_OPTIONS),
     ]);
-    let range_params = leak_params(vec![
-        pd_num("dist", "cm", 50.0, Some(10.0), Some(300.0), None),
-        pd_num("speed", "Speed %", 50.0, Some(10.0), Some(100.0), None),
+    let avoid_wall_params = leak_params(vec![
+        pd_num("timeout", "Timeout (s)", 2.0, Some(0.1), Some(30.0), Some(0.1)),
+        pd_num("dist", "Distance (cm)", 70.0, Some(10.0), Some(300.0), None),
     ]);
-    let detect_wall_params = leak_params(vec![pd_text("var", "Store in", "detected")]);
+    let keep_distance_params = leak_params(vec![
+        pd_num("timeout", "Timeout (s)", 2.0, Some(0.1), Some(30.0), Some(0.1)),
+        pd_num("dist", "Distance (cm)", 50.0, Some(10.0), Some(300.0), None),
+    ]);
+    let detect_wall_params = leak_params(vec![
+        pd_text("var", "Store in", "detected"),
+        pd_num("dist", "Threshold (cm)", 50.0, Some(10.0), Some(300.0), None),
+    ]);
     let led_params = leak_params(vec![pd_select("color", "Color", "green", LED_COLOR_OPTIONS)]);
     let buzzer_params = leak_params(vec![
         pd_num("freq", "Frequency (Hz)", 440.0, Some(100.0), Some(2000.0), None),
@@ -782,8 +800,8 @@ fn build_command_defs() -> Vec<CommandDef> {
         CommandDef { label: "Triangle Turn", command_type: CommandType::TriangleTurn, params: triangle_params, is_block: false, code: CodeTemplate::Function(triangle_turn_code) },
         CommandDef { label: "Spiral", command_type: CommandType::Spiral, params: spiral_params, is_block: false, code: CodeTemplate::Function(spiral_code) },
         CommandDef { label: "Sway", command_type: CommandType::Sway, params: sway_params, is_block: false, code: CodeTemplate::Function(sway_code) },
-        CommandDef { label: "Keep Distance", command_type: CommandType::KeepDistance, params: range_params, is_block: false, code: CodeTemplate::Function(keep_distance_code) },
-        CommandDef { label: "Avoid Wall", command_type: CommandType::AvoidWall, params: range_params, is_block: false, code: CodeTemplate::Function(avoid_wall_code) },
+        CommandDef { label: "Keep Distance", command_type: CommandType::KeepDistance, params: keep_distance_params, is_block: false, code: CodeTemplate::Function(keep_distance_code) },
+        CommandDef { label: "Avoid Wall", command_type: CommandType::AvoidWall, params: avoid_wall_params, is_block: false, code: CodeTemplate::Function(avoid_wall_code) },
         CommandDef { label: "Detect Wall", command_type: CommandType::DetectWall, params: detect_wall_params, is_block: false, code: CodeTemplate::Function(detect_wall_code) },
         CommandDef { label: "LED", command_type: CommandType::Led, params: led_params, is_block: false, code: CodeTemplate::Function(led_code) },
         CommandDef { label: "LED Off", command_type: CommandType::LedOff, params: &[], is_block: false, code: CodeTemplate::Fixed("drone.drone_LED_off()") },
@@ -1045,12 +1063,24 @@ mod tests {
             "drone.keep_distance(2, 50)"
         );
         assert_eq!(
+            code_for(CommandType::KeepDistance, &params(&[("timeout", num(3.0)), ("dist", num(40.0))])),
+            "drone.keep_distance(3, 40)"
+        );
+        assert_eq!(
             code_for(CommandType::AvoidWall, &params(&[("dist", num(70.0)), ("speed", num(50.0))])),
             "drone.avoid_wall(2, 70)"
         );
         assert_eq!(
+            code_for(CommandType::AvoidWall, &params(&[("timeout", num(4.5)), ("dist", num(65.0))])),
+            "drone.avoid_wall(4.5, 65)"
+        );
+        assert_eq!(
             code_for(CommandType::DetectWall, &params(&[("var", txt("det"))])),
             "det = drone.detect_wall()"
+        );
+        assert_eq!(
+            code_for(CommandType::DetectWall, &params(&[("var", txt("wall")), ("dist", num(50.0))])),
+            "wall = drone.detect_wall(50)"
         );
         assert_eq!(code_for(CommandType::Led, &params(&[("color", txt("green"))])), "drone.set_drone_LED(0, 255, 0, 100)");
         assert_eq!(code_for(CommandType::Led, &params(&[("color", txt("yellow"))])), "drone.set_drone_LED(255, 255, 0, 100)");

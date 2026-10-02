@@ -605,6 +605,8 @@ impl ViewportPanel {
         }
         build_obstacles(&mut geom, state);
         build_route(&mut geom, state);
+        crate::ui::overlay_route::build(&mut geom, state);
+        crate::ui::overlay_sensors::build(&mut geom, state);
         self.build_waypoints(&mut geom, state, &view, &proj, rect);
         self.build_trails(&mut geom);
         build_drones(self, &mut geom, state, &frame);
@@ -651,9 +653,9 @@ impl ViewportPanel {
 }
 
 #[derive(Default)]
-struct SceneGeom {
-    lines: Vec<f32>,
-    tris: Vec<f32>,
+pub struct SceneGeom {
+    pub lines: Vec<f32>,
+    pub tris: Vec<f32>,
 }
 
 fn sig_bytes(seed: &mut u64, bytes: &[u8]) {
@@ -697,7 +699,7 @@ fn state_signature(state: &AppState) -> u64 {
     hash
 }
 
-fn push_line(g: &mut SceneGeom, a: [f32; 3], b: [f32; 3], color: [f32; 4]) {
+pub fn push_line(g: &mut SceneGeom, a: [f32; 3], b: [f32; 3], color: [f32; 4]) {
     for v in [a, b] {
         g.lines
             .extend_from_slice(&[v[0], v[1], v[2], color[0], color[1], color[2], color[3]]);
@@ -719,7 +721,7 @@ fn rgb(hex: u32) -> [f32; 3] {
     ]
 }
 
-fn rgba(hex: u32, a: f32) -> [f32; 4] {
+pub fn rgba(hex: u32, a: f32) -> [f32; 4] {
     let c = rgb(hex);
     [c[0], c[1], c[2], a]
 }
@@ -1488,7 +1490,7 @@ fn drone_color(state: &AppState, id: &str) -> [f32; 3] {
         .unwrap_or(rgb(0x00d4ff))
 }
 
-fn emit_octa(g: &mut SceneGeom, center: [f32; 3], r: f32, color: [f32; 4]) {
+pub fn emit_octa(g: &mut SceneGeom, center: [f32; 3], r: f32, color: [f32; 4]) {
     let v = [
         [center[0] + r, center[1], center[2]],
         [center[0] - r, center[1], center[2]],

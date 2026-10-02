@@ -324,16 +324,19 @@ fn dispatch(
         CommandType::KeepDistance => {
             let dist = pd(command.param_f64("dist"), 50.0);
             let speed = pd(command.param_f64("speed"), 50.0);
-            shapes::keep_distance(state, speed, dist)
+            let timeout = pd(command.param_f64("timeout"), 2.0);
+            shapes::keep_distance(state, obstacles, speed, dist, timeout)
         }
         CommandType::AvoidWall => {
             let dist = pd(command.param_f64("dist"), 50.0);
             let speed = pd(command.param_f64("speed"), 50.0);
-            shapes::avoid_wall(state, speed, dist)
+            let timeout = pd(command.param_f64("timeout"), 2.0);
+            shapes::avoid_wall(state, obstacles, speed, dist, timeout)
         }
         CommandType::DetectWall => {
             let var_name = ps(command.param_str("var"), "detected");
-            shapes::detect_wall(state, var_name, runtime)
+            let dist = pd(command.param_f64("dist"), 50.0);
+            shapes::detect_wall(state, obstacles, var_name, dist, runtime)
         }
         CommandType::Led => {
             let r = pi(command, "r", 0.0).clamp(0.0, 255.0);
@@ -391,25 +394,25 @@ fn dispatch(
         CommandType::PrintVar => 0.0,
         CommandType::IfBlock => {
             if eval_condition(command, "condition", &runtime.vars) {
-                process_commands(&command.children, state, runtime, ctx, None, None);
+                process_commands(&command.children, state, runtime, ctx, obstacles, None);
             }
             0.0
         }
         CommandType::ElifBlock => {
             if eval_condition(command, "condition", &runtime.vars) {
-                process_commands(&command.children, state, runtime, ctx, None, None);
+                process_commands(&command.children, state, runtime, ctx, obstacles, None);
             }
             0.0
         }
         CommandType::ElseBlock => {
-            process_commands(&command.children, state, runtime, ctx, None, None);
+            process_commands(&command.children, state, runtime, ctx, obstacles, None);
             0.0
         }
         CommandType::EndBlock => 0.0,
         CommandType::WhileBlock => {
             let mut loops = 0u64;
             while eval_condition(command, "condition", &runtime.vars) && loops < MAX_WHILE_LOOPS {
-                process_commands(&command.children, state, runtime, ctx, None, None);
+                process_commands(&command.children, state, runtime, ctx, obstacles, None);
                 loops += 1;
             }
             0.0
@@ -425,7 +428,7 @@ fn dispatch(
                     runtime
                         .vars
                         .insert(var_name.to_string(), VarValue::Num(i as f64));
-                    process_commands(&command.children, state, runtime, ctx, None, None);
+                    process_commands(&command.children, state, runtime, ctx, obstacles, None);
                     i += step;
                 }
             }
@@ -449,42 +452,57 @@ fn dispatch(
         }
         CommandType::GetHeight => {
             let var_name = ps(command.param_str("var"), "height");
-            runtime.vars.insert(
-                var_name.to_string(),
-                VarValue::Num(runtime::get_height(state.z)),
-            );
+            let probe = [state.x, state.z, state.y];
+            let val = runtime::eval_bottom_range(probe, state.heading, state.z, obstacles);
+            runtime
+                .vars
+                .insert(var_name.to_string(), VarValue::Num(val));
             0.0
         }
         CommandType::GetFrontRange => {
             let var_name = ps(command.param_str("var"), "front_range");
-            runtime.vars.insert(
-                var_name.to_string(),
-                VarValue::Num(runtime::get_front_range()),
-            );
+            let probe = [state.x, state.z, state.y];
+            let val = runtime::eval_front_range(probe, state.heading, obstacles);
+            runtime
+                .vars
+                .insert(var_name.to_string(), VarValue::Num(val));
             0.0
         }
         CommandType::GetBottomRange => {
             let var_name = ps(command.param_str("var"), "bottom_range");
-            runtime.vars.insert(
-                var_name.to_string(),
-                VarValue::Num(runtime::get_bottom_range(state.z)),
-            );
+            let probe = [state.x, state.z, state.y];
+            let val = runtime::eval_bottom_range(probe, state.heading, state.z, obstacles);
+            runtime
+                .vars
+                .insert(var_name.to_string(), VarValue::Num(val));
             0.0
         }
         CommandType::GetFrontColor => {
             let var_name = ps(command.param_str("var"), "front_color");
-            runtime.vars.insert(
-                var_name.to_string(),
-                VarValue::Str(runtime::get_front_color().to_string()),
+            let probe = [state.x, state.z, state.y];
+            let val = runtime::eval_color(
+                probe,
+                state.heading,
+                crate::sensors::SensorKind::FrontColor,
+                obstacles,
             );
+            runtime
+                .vars
+                .insert(var_name.to_string(), VarValue::Str(val));
             0.0
         }
         CommandType::GetBackColor => {
             let var_name = ps(command.param_str("var"), "back_color");
-            runtime.vars.insert(
-                var_name.to_string(),
-                VarValue::Str(runtime::get_back_color().to_string()),
+            let probe = [state.x, state.z, state.y];
+            let val = runtime::eval_color(
+                probe,
+                state.heading,
+                crate::sensors::SensorKind::BackColor,
+                obstacles,
             );
+            runtime
+                .vars
+                .insert(var_name.to_string(), VarValue::Str(val));
             0.0
         }
         CommandType::GetTemperature => {
@@ -505,7 +523,7 @@ fn dispatch(
         CommandType::FuncCall => {
             let name = ps(command.param_str("name"), "my_func");
             if let Some(body) = controlflow::call_function(ctx, name).cloned() {
-                process_commands(&body, state, runtime, ctx, None, None);
+                process_commands(&body, state, runtime, ctx, obstacles, None);
             }
             0.0
         }
@@ -753,5 +771,244 @@ mod tests {
         ];
         let result = simulate_commands(&commands, None);
         assert_eq!(result.total_duration, 0.2);
+    }
+
+    #[test]
+    fn test_sim_sensor_proximity_approaching_wall() {
+        use crate::obstacles::Obstacle;
+
+        let mut obstacles = ObstacleSet::new();
+        obstacles.obstacles.push(Obstacle {
+            id: "wall_target".to_string(),
+            obstacle_type: "wall".to_string(),
+            position: [1.20, 0.50, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: [1.0, 1.0, 1.0],
+            name: "Target Wall".to_string(),
+            color: None,
+        });
+        obstacles.obstacles.push(Obstacle {
+            id: "elevated_platform".to_string(),
+            obstacle_type: "wall".to_string(),
+            position: [0.0, 0.15, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: [0.2, 0.3, 1.0],
+            name: "Platform".to_string(),
+            color: None,
+        });
+
+        let commands = vec![
+            make("takeoff", CommandType::Takeoff, &[], vec![]),
+            make("r1", CommandType::GetFrontRange, &[("var", text("d1"))], vec![]),
+            make("b1", CommandType::GetBottomRange, &[("var", text("b_plat"))], vec![]),
+            make("m1", CommandType::MoveForward, &[("dist", number(20.0)), ("speed", number(50.0))], vec![]),
+            make("r2", CommandType::GetFrontRange, &[("var", text("d2"))], vec![]),
+            make("m2", CommandType::MoveForward, &[("dist", number(25.0)), ("speed", number(50.0))], vec![]),
+            make("r3", CommandType::GetFrontRange, &[("var", text("d3"))], vec![]),
+            make("b2", CommandType::GetBottomRange, &[("var", text("b_ground"))], vec![]),
+            make("m3", CommandType::MoveForward, &[("dist", number(20.0)), ("speed", number(50.0))], vec![]),
+            make("r4", CommandType::GetFrontRange, &[("var", text("d4"))], vec![]),
+        ];
+
+        let mut state = SimState::new();
+        let mut runtime = RuntimeState::new();
+        let mut ctx = ControlContext::new();
+
+        process_commands(&commands, &mut state, &mut runtime, &mut ctx, Some(&obstacles), None);
+
+        let get_num = |var: &str| match runtime.vars.get(var) {
+            Some(VarValue::Num(n)) => *n,
+            other => panic!("expected numeric variable {var}, got {other:?}"),
+        };
+
+        let d1 = get_num("d1");
+        let d2 = get_num("d2");
+        let d3 = get_num("d3");
+        let d4 = get_num("d4");
+
+        assert!(d1 > d2, "front range must decrease: d1={d1} vs d2={d2}");
+        assert!(d2 > d3, "front range must decrease: d2={d2} vs d3={d3}");
+        assert!(d3 > d4, "front range must decrease: d3={d3} vs d4={d4}");
+
+        let b_plat = get_num("b_plat");
+        let b_ground = get_num("b_ground");
+        assert!(b_ground > b_plat, "ground height ({b_ground}) must be greater than over platform ({b_plat})");
+        assert!(b_ground - b_plat >= 25.0, "platform elevation delta ({}) must be at least 25cm", b_ground - b_plat);
+
+        let mut state_none = SimState::new();
+        let mut runtime_none = RuntimeState::new();
+        let mut ctx_none = ControlContext::new();
+        process_commands(&commands, &mut state_none, &mut runtime_none, &mut ctx_none, None, None);
+        assert_eq!(runtime_none.vars.get("d1"), Some(&VarValue::Num(100.0)));
+        assert_eq!(runtime_none.vars.get("d2"), Some(&VarValue::Num(100.0)));
+        assert_eq!(runtime_none.vars.get("d3"), Some(&VarValue::Num(100.0)));
+        assert_eq!(runtime_none.vars.get("d4"), Some(&VarValue::Num(100.0)));
+    }
+
+    #[test]
+    fn test_sim_sensor_out_of_range_and_escapement() {
+        use crate::obstacles::Obstacle;
+
+        let mut obstacles = ObstacleSet::new();
+        obstacles.obstacles.push(Obstacle {
+            id: "far_wall".to_string(),
+            obstacle_type: "wall".to_string(),
+            position: [3.0, 0.50, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: [1.0, 1.0, 1.0],
+            name: "Far Wall".to_string(),
+            color: None,
+        });
+
+        let commands = vec![
+            make("takeoff", CommandType::Takeoff, &[], vec![]),
+            make("r_far", CommandType::GetFrontRange, &[("var", text("d_far"))], vec![]),
+            make("turn", CommandType::TurnDegree, &[("deg", number(180.0))], vec![]),
+            make("r_turn", CommandType::GetFrontRange, &[("var", text("d_turn"))], vec![]),
+        ];
+
+        let mut state = SimState::new();
+        let mut runtime = RuntimeState::new();
+        let mut ctx = ControlContext::new();
+
+        process_commands(&commands, &mut state, &mut runtime, &mut ctx, Some(&obstacles), None);
+
+        let get_num = |var: &str| match runtime.vars.get(var) {
+            Some(VarValue::Num(n)) => *n,
+            other => panic!("expected numeric variable {var}, got {other:?}"),
+        };
+
+        assert_eq!(get_num("d_far"), 100.0, "obstacle beyond 100cm must return 100cm ceiling");
+        assert_eq!(get_num("d_turn"), 100.0, "facing away from obstacle must return 100cm escapement");
+    }
+
+    #[test]
+    fn test_sim_avoid_wall_standoff_settling() {
+        use crate::obstacles::Obstacle;
+
+        let mut obstacles = ObstacleSet::new();
+        obstacles.obstacles.push(Obstacle {
+            id: "wall1".to_string(),
+            obstacle_type: "wall".to_string(),
+            position: [1.2, 0.5, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: [0.2, 1.0, 1.0],
+            name: "Wall".to_string(),
+            color: None,
+        });
+
+        let commands = vec![
+            make("takeoff", CommandType::Takeoff, &[], vec![]),
+            make(
+                "avoid",
+                CommandType::AvoidWall,
+                &[("timeout", number(2.0)), ("dist", number(50.0)), ("speed", number(50.0))],
+                vec![],
+            ),
+        ];
+
+        let mut state = SimState::new();
+        let mut runtime = RuntimeState::new();
+        let mut ctx = ControlContext::new();
+
+        process_commands(&commands, &mut state, &mut runtime, &mut ctx, Some(&obstacles), None);
+
+        assert!(state.x > 0.0, "drone must advance toward distant wall");
+        assert!(state.x < 1.0, "drone must not penetrate wall");
+        assert!(state.collisions.is_empty(), "no collisions allowed");
+    }
+
+    #[test]
+    fn test_sim_avoid_wall_retreats_when_too_close() {
+        use crate::obstacles::Obstacle;
+
+        let mut obstacles = ObstacleSet::new();
+        obstacles.obstacles.push(Obstacle {
+            id: "wall2".to_string(),
+            obstacle_type: "wall".to_string(),
+            position: [1.0, 0.5, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: [0.2, 1.0, 1.0],
+            name: "Wall".to_string(),
+            color: None,
+        });
+
+        let commands = vec![
+            make("takeoff", CommandType::Takeoff, &[], vec![]),
+            make("fwd", CommandType::MoveForward, &[("dist", number(65.0)), ("speed", number(50.0))], vec![]),
+            make(
+                "avoid",
+                CommandType::AvoidWall,
+                &[("timeout", number(2.0)), ("dist", number(60.0)), ("speed", number(50.0))],
+                vec![],
+            ),
+        ];
+
+        let mut state = SimState::new();
+        let mut runtime = RuntimeState::new();
+        let mut ctx = ControlContext::new();
+
+        process_commands(&commands, &mut state, &mut runtime, &mut ctx, Some(&obstacles), None);
+
+        assert!(state.x < 0.65, "drone must retreat when closer than target distance");
+        assert!(state.collisions.is_empty(), "no collisions allowed");
+    }
+
+    #[test]
+    fn test_sim_avoid_wall_none_preserves_retreat() {
+        let commands = vec![
+            make("takeoff", CommandType::Takeoff, &[], vec![]),
+            make(
+                "avoid",
+                CommandType::AvoidWall,
+                &[("dist", number(50.0)), ("speed", number(50.0))],
+                vec![],
+            ),
+        ];
+
+        let mut state = SimState::new();
+        let mut runtime = RuntimeState::new();
+        let mut ctx = ControlContext::new();
+
+        process_commands(&commands, &mut state, &mut runtime, &mut ctx, None, None);
+
+        assert!(state.x < -0.40 && state.x > -0.45, "fallback must retreat ~42cm: {}", state.x);
+    }
+
+    #[test]
+    fn test_sim_detect_wall_with_obstacles() {
+        use crate::obstacles::Obstacle;
+
+        let mut obstacles = ObstacleSet::new();
+        obstacles.obstacles.push(Obstacle {
+            id: "wall3".to_string(),
+            obstacle_type: "wall".to_string(),
+            position: [0.8, 0.5, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: [0.2, 1.0, 1.0],
+            name: "Wall".to_string(),
+            color: None,
+        });
+
+        let commands = vec![
+            make("takeoff", CommandType::Takeoff, &[], vec![]),
+            make("det1", CommandType::DetectWall, &[("var", text("w1")), ("dist", number(90.0))], vec![]),
+            make("turn", CommandType::TurnDegree, &[("deg", number(180.0))], vec![]),
+            make("det2", CommandType::DetectWall, &[("var", text("w2")), ("dist", number(90.0))], vec![]),
+        ];
+
+        let mut state = SimState::new();
+        let mut runtime = RuntimeState::new();
+        let mut ctx = ControlContext::new();
+
+        process_commands(&commands, &mut state, &mut runtime, &mut ctx, Some(&obstacles), None);
+
+        let get_num = |var: &str| match runtime.vars.get(var) {
+            Some(VarValue::Num(n)) => *n,
+            other => panic!("expected numeric variable {var}, got {other:?}"),
+        };
+
+        assert_eq!(get_num("w1"), 1.0);
+        assert_eq!(get_num("w2"), 0.0);
     }
 }
