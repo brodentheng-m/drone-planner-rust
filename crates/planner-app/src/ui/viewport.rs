@@ -4,7 +4,7 @@ use eframe::glow::{self, HasContext};
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Ui};
 use planner_core::golden::LedValue;
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 const MIN_PITCH: f32 = std::f32::consts::FRAC_PI_2 - std::f32::consts::PI / 2.1;
 const MAX_PITCH: f32 = 1.55;
@@ -1190,51 +1190,6 @@ fn emit_box(g: &mut SceneGeom, xf: &Xform, dims: [f32; 3], color: [f32; 4], edge
     }
 }
 
-fn emit_cylinder(g: &mut SceneGeom, xf: &Xform, radius: f32, height: f32, color: [f32; 4]) {
-    const SEG: usize = 12;
-    let half = height / 2.0;
-    let top = xf.apply([0.0, half, 0.0]);
-    let bottom = xf.apply([0.0, -half, 0.0]);
-    for i in 0..SEG {
-        let a0 = i as f32 / SEG as f32 * std::f32::consts::TAU;
-        let a1 = (i + 1) as f32 / SEG as f32 * std::f32::consts::TAU;
-        let b0 = xf.apply([radius * a0.cos(), -half, radius * a0.sin()]);
-        let b1 = xf.apply([radius * a1.cos(), -half, radius * a1.sin()]);
-        let t0 = xf.apply([radius * a0.cos(), half, radius * a0.sin()]);
-        let t1 = xf.apply([radius * a1.cos(), half, radius * a1.sin()]);
-        push_tri(g, b0, b1, t1, color);
-        push_tri(g, b0, t1, t0, color);
-        push_tri(g, top, t0, t1, color);
-        push_tri(g, bottom, b1, b0, color);
-    }
-}
-
-fn emit_duct_ring(g: &mut SceneGeom, xf: &Xform, radius: f32, height: f32, color: [f32; 4]) {
-    const SEG: usize = 16;
-    let half = height / 2.0;
-    let inner = radius * 0.84;
-    for i in 0..SEG {
-        let a0 = i as f32 / SEG as f32 * std::f32::consts::TAU;
-        let a1 = (i + 1) as f32 / SEG as f32 * std::f32::consts::TAU;
-        let ot0 = xf.apply([radius * a0.cos(), half, radius * a0.sin()]);
-        let ot1 = xf.apply([radius * a1.cos(), half, radius * a1.sin()]);
-        let ob0 = xf.apply([radius * a0.cos(), -half, radius * a0.sin()]);
-        let ob1 = xf.apply([radius * a1.cos(), -half, radius * a1.sin()]);
-        let it0 = xf.apply([inner * a0.cos(), half, inner * a0.sin()]);
-        let it1 = xf.apply([inner * a1.cos(), half, inner * a1.sin()]);
-        let ib0 = xf.apply([inner * a0.cos(), -half, inner * a0.sin()]);
-        let ib1 = xf.apply([inner * a1.cos(), -half, inner * a1.sin()]);
-        push_tri(g, ob0, ob1, ot1, color);
-        push_tri(g, ob0, ot1, ot0, color);
-        push_tri(g, ib0, ib1, it1, color);
-        push_tri(g, ib0, it1, it0, color);
-        push_tri(g, ot0, ot1, it1, color);
-        push_tri(g, ot0, it1, it0, color);
-        push_tri(g, ob0, ob1, ib1, color);
-        push_tri(g, ob0, ib1, ib0, color);
-    }
-}
-
 fn build_boundary(g: &mut SceneGeom, state: &AppState) {
     let b = &state.obstacles.boundary;
     let (x0, x1) = (b.min_x as f32, b.max_x as f32);
@@ -1339,10 +1294,172 @@ fn led_rgb(led: &LedValue) -> Option<[f32; 3]> {
     }
 }
 
-fn build_drones(panel: &ViewportPanel, g: &mut SceneGeom, state: &AppState, frame: &Option<FrameState>) {
+const BODY_OBJ: &str = include_str!("../../../../assets/models/codrone_edu_body_metric.obj");
+const PROP1_OBJ: &str = include_str!("../../../../assets/models/Propeller1.obj");
+const PROP2_OBJ: &str = include_str!("../../../../assets/models/Propeller2.obj");
+const PROP3_OBJ: &str = include_str!("../../../../assets/models/Propeller3.obj");
+const PROP4_OBJ: &str = include_str!("../../../../assets/models/Propeller4.obj");
+
+#[derive(Clone, Copy)]
+struct DroneMeshTriangle {
+    a: [f32; 3],
+    b: [f32; 3],
+    c: [f32; 3],
+}
+
+struct DroneMeshModel {
+    body_chassis: Vec<DroneMeshTriangle>,
+    body_canopy: Vec<DroneMeshTriangle>,
+    propellers: [Vec<DroneMeshTriangle>; 4],
+}
+
+static DRONE_MODEL: OnceLock<DroneMeshModel> = OnceLock::new();
+
+fn parse_body_mesh(src: &str) -> (Vec<DroneMeshTriangle>, Vec<DroneMeshTriangle>) {
+    let mut verts = Vec::with_capacity(7500);
+    let mut chassis = Vec::with_capacity(7000);
+    let mut canopy = Vec::with_capacity(1800);
+    for line in src.lines() {
+        let mut tokens = line.split_ascii_whitespace();
+        match tokens.next() {
+            Some("v") => {
+                if let (Some(x), Some(y), Some(z)) = (tokens.next(), tokens.next(), tokens.next()) {
+                    if let (Ok(ox), Ok(oy), Ok(oz)) = (x.parse::<f32>(), y.parse::<f32>(), z.parse::<f32>()) {
+                        verts.push([oy, oz, ox]);
+                    }
+                }
+            }
+            Some("f") => {
+                let mut idx = [0usize; 3];
+                let mut valid = true;
+                for i in 0..3 {
+                    if let Some(tok) = tokens.next() {
+                        let v_str = tok.split('/').next().unwrap_or("");
+                        if let Ok(v_idx) = v_str.parse::<usize>() {
+                            if v_idx > 0 && v_idx <= verts.len() {
+                                idx[i] = v_idx - 1;
+                            } else {
+                                valid = false;
+                                break;
+                            }
+                        } else {
+                            valid = false;
+                            break;
+                        }
+                    } else {
+                        valid = false;
+                        break;
+                    }
+                }
+                if valid {
+                    let a = verts[idx[0]];
+                    let b = verts[idx[1]];
+                    let c = verts[idx[2]];
+                    let cy = (a[1] + b[1] + c[1]) / 3.0;
+                    let cx = (a[0] + b[0] + c[0]) / 3.0;
+                    let cz = (a[2] + b[2] + c[2]) / 3.0;
+                    let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+                    let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+                    let ny = u[2] * v[0] - u[0] * v[2];
+                    let is_canopy = cy > 0.0
+                        && cx.abs() < 0.016
+                        && cz > -0.024
+                        && cz < 0.028
+                        && ny > 0.0;
+                    let tri = DroneMeshTriangle { a, b, c };
+                    if is_canopy {
+                        canopy.push(tri);
+                    } else {
+                        chassis.push(tri);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    (chassis, canopy)
+}
+
+fn parse_propeller_mesh(src: &str) -> Vec<DroneMeshTriangle> {
+    let mut verts = Vec::with_capacity(300);
+    let mut tris = Vec::with_capacity(400);
+    for line in src.lines() {
+        let mut tokens = line.split_ascii_whitespace();
+        match tokens.next() {
+            Some("v") => {
+                if let (Some(x), Some(y), Some(z)) = (tokens.next(), tokens.next(), tokens.next()) {
+                    if let (Ok(ox), Ok(oy), Ok(oz)) = (x.parse::<f32>(), y.parse::<f32>(), z.parse::<f32>()) {
+                        verts.push([ox * 100.0, oz * 100.0, oy * 100.0]);
+                    }
+                }
+            }
+            Some("f") => {
+                let mut idx = [0usize; 3];
+                let mut valid = true;
+                for i in 0..3 {
+                    if let Some(tok) = tokens.next() {
+                        let v_str = tok.split('/').next().unwrap_or("");
+                        if let Ok(v_idx) = v_str.parse::<usize>() {
+                            if v_idx > 0 && v_idx <= verts.len() {
+                                idx[i] = v_idx - 1;
+                            } else {
+                                valid = false;
+                                break;
+                            }
+                        } else {
+                            valid = false;
+                            break;
+                        }
+                    } else {
+                        valid = false;
+                        break;
+                    }
+                }
+                if valid {
+                    tris.push(DroneMeshTriangle {
+                        a: verts[idx[0]],
+                        b: verts[idx[2]],
+                        c: verts[idx[1]],
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    tris
+}
+
+fn get_drone_model() -> &'static DroneMeshModel {
+    DRONE_MODEL.get_or_init(|| {
+        let (chassis, canopy) = parse_body_mesh(BODY_OBJ);
+        let p1 = parse_propeller_mesh(PROP1_OBJ);
+        let p2 = parse_propeller_mesh(PROP2_OBJ);
+        let p3 = parse_propeller_mesh(PROP3_OBJ);
+        let p4 = parse_propeller_mesh(PROP4_OBJ);
+        DroneMeshModel {
+            body_chassis: chassis,
+            body_canopy: canopy,
+            propellers: [p1, p2, p3, p4],
+        }
+    })
+}
+
+fn build_drones(
+    panel: &ViewportPanel,
+    g: &mut SceneGeom,
+    state: &AppState,
+    frame: &Option<FrameState>,
+) {
     let Some(frame) = frame else { return };
-    let s = 0.1f32 / 0.28;
+    let model = get_drone_model();
+    let s = 1.0f32;
     let ident = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let prop_hubs: [(usize, [f32; 3], f32, [f32; 4]); 4] = [
+        (0, [0.03608, -0.0010, -0.03508], -1.0, [0.97, 0.32, 0.29, 0.95]),
+        (3, [-0.03608, -0.0010, -0.03508], 1.0, [0.97, 0.32, 0.29, 0.95]),
+        (1, [0.03608, -0.0010, 0.03507], 1.0, [0.22, 0.25, 0.30, 0.95]),
+        (2, [-0.03608, -0.0010, 0.03507], -1.0, [0.22, 0.25, 0.30, 0.95]),
+    ];
     for (id, point) in &frame.positions {
         let color = drone_color(state, id);
         let yaw = (-(point.heading as f32)).to_radians() - std::f32::consts::FRAC_PI_2;
@@ -1356,10 +1473,61 @@ fn build_drones(panel: &ViewportPanel, g: &mut SceneGeom, state: &AppState, fram
             scale: [s, s, s],
             pos: [point.x as f32, point.z as f32, point.y as f32],
         };
-        let at = |offset: [f32; 3], extra: &[[f32; 3]; 3]| -> Xform {
+        let chassis_color = rgba(0x1a212d, 1.0);
+        let canopy_color = [color[0], color[1], color[2], 1.0];
+        for tri in &model.body_chassis {
+            push_tri(
+                g,
+                base.apply(tri.a),
+                base.apply(tri.b),
+                base.apply(tri.c),
+                chassis_color,
+            );
+        }
+        for tri in &model.body_canopy {
+            push_tri(
+                g,
+                base.apply(tri.a),
+                base.apply(tri.b),
+                base.apply(tri.c),
+                canopy_color,
+            );
+        }
+        for (prop_idx, hub, spin_dir, prop_col) in prop_hubs {
+            let spin_angle = panel.spin * spin_dir;
+            let (sin_s, cos_s) = spin_angle.sin_cos();
+            for tri in &model.propellers[prop_idx] {
+                let pa = [
+                    tri.a[0] * cos_s + tri.a[2] * sin_s + hub[0],
+                    tri.a[1] + hub[1],
+                    -tri.a[0] * sin_s + tri.a[2] * cos_s + hub[2],
+                ];
+                let pb = [
+                    tri.b[0] * cos_s + tri.b[2] * sin_s + hub[0],
+                    tri.b[1] + hub[1],
+                    -tri.b[0] * sin_s + tri.b[2] * cos_s + hub[2],
+                ];
+                let pc = [
+                    tri.c[0] * cos_s + tri.c[2] * sin_s + hub[0],
+                    tri.c[1] + hub[1],
+                    -tri.c[0] * sin_s + tri.c[2] * cos_s + hub[2],
+                ];
+                push_tri(
+                    g,
+                    base.apply(pa),
+                    base.apply(pb),
+                    base.apply(pc),
+                    prop_col,
+                );
+            }
+        }
+        let led = led_rgb(&point.led);
+        let front_c = led.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or([0.9, 1.0, 0.9, 1.0]);
+        let rear_c = led.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or([1.0, 0.2, 0.2, 1.0]);
+        let at = |offset: [f32; 3]| -> Xform {
             let moved = mat3_vec(&base.rot, [offset[0] * s, offset[1] * s, offset[2] * s]);
             Xform {
-                rot: mat3_mul(&base.rot, extra),
+                rot: mat3_mul(&base.rot, &ident),
                 scale: [s, s, s],
                 pos: [
                     base.pos[0] + moved[0],
@@ -1368,114 +1536,9 @@ fn build_drones(panel: &ViewportPanel, g: &mut SceneGeom, state: &AppState, fram
                 ],
             }
         };
-        let tint = [color[0], color[1], color[2], 1.0];
-        emit_box(g, &at([0.0, 0.0, 0.0], &ident), [0.26, 0.028, 0.26], rgba(0x1a212d, 1.0), false);
-        emit_box(g, &at([0.0, 0.024, 0.0], &ident), [0.22, 0.026, 0.22], rgba(0x2d3748, 1.0), false);
-        emit_box(g, &at([0.0, 0.040, 0.0], &ident), [0.17, 0.010, 0.17], tint, false);
-        emit_box(g, &at([0.0, 0.052, 0.010], &ident), [0.12, 0.018, 0.08], rgba(0x161b22, 1.0), false);
-        emit_box(g, &at([0.0, 0.062, 0.010], &ident), [0.07, 0.003, 0.025], rgba(0x3fb950, 1.0), false);
-        emit_box(g, &at([0.0, 0.056, -0.038], &ident), [0.026, 0.008, 0.012], rgba(0x8b949e, 1.0), false);
-        emit_box(g, &at([0.0, 0.020, -0.155], &ident), [0.05, 0.015, 0.04], tint, false);
-        emit_box(g, &at([0.0, -0.004, -0.138], &ident), [0.06, 0.020, 0.014], rgba(0x1a212d, 1.0), false);
-        for lx in [-0.016f32, 0.016] {
-            emit_box(g, &at([lx, -0.004, -0.146], &ident), [0.011, 0.011, 0.006], rgba(0x1f6feb, 1.0), false);
-        }
-        emit_box(g, &at([0.0, 0.014, -0.138], &ident), [0.036, 0.020, 0.016], rgba(0x21262d, 1.0), false);
-        emit_box(g, &at([0.0, 0.014, -0.147], &ident), [0.014, 0.014, 0.004], rgba(0x0d1117, 1.0), false);
-        emit_box(g, &at([0.0, -0.022, -0.035], &ident), [0.04, 0.012, 0.03], rgba(0x21262d, 1.0), false);
-        emit_box(g, &at([0.0, -0.022, 0.035], &ident), [0.036, 0.012, 0.036], rgba(0x21262d, 1.0), false);
-        for (sx, sz) in [(1.0f32, 1.0f32), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
-            let diag = -(sz.atan2(sx));
-            let arm = rot_yxz(diag, 0.0, 0.0);
-            emit_box(g, &at([0.15 * sx, 0.006, 0.15 * sz], &arm), [0.20, 0.018, 0.024], rgba(0x30363d, 1.0), false);
-            emit_box(g, &at([0.12 * sx, -0.008, 0.12 * sz], &ident), [0.10, 0.010, 0.016], rgba(0x21262d, 1.0), false);
-            emit_cylinder(g, &at([0.28 * sx, 0.016, 0.28 * sz], &ident), 0.044, 0.032, rgba(0x484f58, 1.0));
-            emit_cylinder(g, &at([0.28 * sx, 0.034, 0.28 * sz], &ident), 0.032, 0.008, rgba(0x30363d, 1.0));
-            emit_cylinder(g, &at([0.28 * sx, 0.044, 0.28 * sz], &ident), 0.014, 0.012, rgba(0x8b949e, 1.0));
-            emit_duct_ring(g, &at([0.28 * sx, 0.040, 0.28 * sz], &ident), 0.138, 0.022, rgba(0x484f58, 0.85));
-            for k in 0..4 {
-                let a = k as f32 / 4.0 * std::f32::consts::TAU;
-                let spoke = rot_yxz(a, 0.0, 0.0);
-                emit_box(
-                    g,
-                    &at(
-                        [
-                            0.28 * sx + 0.091 * a.cos(),
-                            0.036,
-                            0.28 * sz + 0.091 * a.sin(),
-                        ],
-                        &spoke,
-                    ),
-                    [0.094, 0.008, 0.010],
-                    rgba(0x484f58, 1.0),
-                    false,
-                );
-            }
-            emit_cylinder(g, &at([0.26 * sx, -0.022, 0.26 * sz], &ident), 0.008, 0.028, rgba(0x161b22, 1.0));
-            emit_box(g, &at([0.26 * sx, -0.038, 0.26 * sz], &ident), [0.034, 0.006, 0.016], rgba(0x161b22, 1.0), false);
-            let spin_dir = if sx * sz > 0.0 { 1.0 } else { -1.0 };
-            let tip = if spin_dir > 0.0 {
-                [0.9, 1.0, 0.9, 1.0]
-            } else {
-                [1.0, 0.45, 0.2, 1.0]
-            };
-            for b in 0..2 {
-                let a = panel.spin * spin_dir + b as f32 * std::f32::consts::PI;
-                let blade = rot_yxz(a, 0.0, 0.0);
-                emit_box(
-                    g,
-                    &at(
-                        [
-                            0.28 * sx + 0.055 * a.cos(),
-                            0.046,
-                            0.28 * sz + 0.055 * a.sin(),
-                        ],
-                        &blade,
-                    ),
-                    [0.10, 0.002, 0.016],
-                    rgba(0x8b949e, 0.7),
-                    false,
-                );
-                emit_box(
-                    g,
-                    &at(
-                        [
-                            0.28 * sx + 0.104 * a.cos(),
-                            0.047,
-                            0.28 * sz + 0.104 * a.sin(),
-                        ],
-                        &blade,
-                    ),
-                    [0.014, 0.003, 0.016],
-                    tip,
-                    false,
-                );
-            }
-        }
-        emit_box(g, &at([0.0, 0.040, -0.418], &ident), [0.28, 0.012, 0.012], rgba(0x30363d, 1.0), false);
-        emit_box(g, &at([0.0, 0.040, 0.418], &ident), [0.28, 0.012, 0.012], rgba(0x30363d, 1.0), false);
-        emit_box(g, &at([-0.418, 0.040, 0.0], &ident), [0.012, 0.012, 0.28], rgba(0x30363d, 1.0), false);
-        emit_box(g, &at([0.418, 0.040, 0.0], &ident), [0.012, 0.012, 0.28], rgba(0x30363d, 1.0), false);
-        let led = led_rgb(&point.led);
-        let front_c = led.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or([0.9, 1.0, 0.9, 1.0]);
-        let rear_c = led.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or([1.0, 0.2, 0.2, 1.0]);
-        let side_c = led.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or([0.2, 0.8, 1.0, 1.0]);
-        let glow_c = led.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or(tint);
-        for lx in [-0.09f32, 0.09] {
-            emit_box(g, &at([lx, 0.006, -0.128], &ident), [0.03, 0.008, 0.012], front_c, false);
-            emit_box(g, &at([lx, 0.006, 0.128], &ident), [0.03, 0.008, 0.012], rear_c, false);
-        }
-        for lz in [-0.075f32, 0.075] {
-            emit_box(g, &at([-0.128, 0.006, lz], &ident), [0.012, 0.008, 0.03], side_c, false);
-            emit_box(g, &at([0.128, 0.006, lz], &ident), [0.012, 0.008, 0.03], side_c, false);
-        }
-        for (lx, lz) in [
-            (-0.08f32, -0.08f32),
-            (0.08, -0.08),
-            (-0.08, 0.08),
-            (0.08, 0.08),
-        ] {
-            emit_box(g, &at([lx, -0.018, lz], &ident), [0.02, 0.006, 0.02], glow_c, false);
+        for lx in [-0.035f32, 0.035] {
+            emit_box(g, &at([lx, 0.006, -0.065]), [0.012, 0.006, 0.008], front_c, false);
+            emit_box(g, &at([lx, 0.006, 0.065]), [0.012, 0.006, 0.008], rear_c, false);
         }
     }
 }
@@ -1775,5 +1838,16 @@ mod tests {
         assert_eq!(color_u8(parse_color("transparent")), [255, 255, 255]);
         assert_eq!(color_u8(parse_color("not-a-color")), [255, 255, 255]);
         assert_eq!(color_u8(parse_color("")), [255, 255, 255]);
+    }
+
+    #[test]
+    fn drone_model_geometry_loaded() {
+        let model = get_drone_model();
+        assert_eq!(model.body_chassis.len() + model.body_canopy.len(), 8600);
+        assert_eq!(model.body_chassis.len(), 6919);
+        assert_eq!(model.body_canopy.len(), 1681);
+        for p in &model.propellers {
+            assert_eq!(p.len(), 400);
+        }
     }
 }
