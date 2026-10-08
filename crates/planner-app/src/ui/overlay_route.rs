@@ -41,7 +41,7 @@ pub fn build(g: &mut SceneGeom, state: &AppState) {
                 color = rgba(0x8b949e, 0.6);
             }
         }
-        emit_octa(g, [wp[0] as f32, wp[2] as f32, wp[1] as f32], 0.08, color);
+        emit_octa(g, [wp[0] as f32, wp[1] as f32, wp[2] as f32], 0.08, color);
     }
 
     if let Some(res) = &state.route_result {
@@ -52,8 +52,8 @@ pub fn build(g: &mut SceneGeom, state: &AppState) {
                 let b = &pair[1];
                 push_line(
                     g,
-                    [a[0] as f32, a[2] as f32, a[1] as f32],
-                    [b[0] as f32, b[2] as f32, b[1] as f32],
+                    [a[0] as f32, a[1] as f32, a[2] as f32],
+                    [b[0] as f32, b[1] as f32, b[2] as f32],
                     path_color,
                 );
             }

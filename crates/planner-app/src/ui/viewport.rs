@@ -357,7 +357,7 @@ impl ViewportPanel {
                 let Some(p) = result.positions.get(idx) else {
                     continue;
                 };
-                let gl = [p.x as f32, p.z as f32 + 0.05, p.y as f32];
+                let gl = [p.x as f32, p.z as f32, p.y as f32];
                 if selected {
                     emit_octa(g, gl, 0.06, [1.0, 1.0, 1.0, 1.0]);
                     emit_ring(g, gl, 0.075, 0.09, [1.0, 1.0, 1.0, 0.7]);
