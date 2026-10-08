@@ -578,8 +578,9 @@ impl ViewportPanel {
         }
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
         self.handle_input(ui, &response);
-        if state.tick(0.033) {
-            self.spin += 50.0 * 0.033;
+        let dt = ui.input(|i| i.stable_dt.clamp(0.001, 0.1)) as f64;
+        if state.tick(dt) {
+            self.spin += 50.0 * dt as f32;
         }
         let frame = state.current_frame();
         self.update_trails(state, &frame);
